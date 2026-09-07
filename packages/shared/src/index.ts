@@ -5,3 +5,4 @@ export * from "./logger.js";
 export * from "./metrics.js";
 export * from "./queues.js";
 export * from "./redis.js";
+export * from "./heartbeat.js";

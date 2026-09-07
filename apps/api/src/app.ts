@@ -244,27 +244,38 @@ export async function buildApp(
   });
 
   app.get("/v1/health", async (_request, reply) => {
-    const [database, redisResult, provider, heartbeat, outboxHeartbeat] =
-      await Promise.all([
-        prisma.$queryRaw`SELECT 1`
-          .then(() => "healthy" as const)
-          .catch(() => "unhealthy" as const),
-        redis
-          .ping()
-          .then(() => "healthy" as const)
-          .catch(() => "unhealthy" as const),
-        redis
-          .get(redisKey("health:provider:api-football", config.QUEUE_PREFIX))
-          .catch(() => null),
-        redis
-          .get(
-            redisKey("health:worker:football-ingestion", config.QUEUE_PREFIX),
-          )
-          .catch(() => null),
-        redis
-          .get(redisKey("health:worker:outbox-dispatcher", config.QUEUE_PREFIX))
-          .catch(() => null),
-      ]);
+    const [
+      database,
+      redisResult,
+      provider,
+      heartbeat,
+      outboxHeartbeat,
+      eventHeartbeat,
+      contentHeartbeat,
+    ] = await Promise.all([
+      prisma.$queryRaw`SELECT 1`
+        .then(() => "healthy" as const)
+        .catch(() => "unhealthy" as const),
+      redis
+        .ping()
+        .then(() => "healthy" as const)
+        .catch(() => "unhealthy" as const),
+      redis
+        .get(redisKey("health:provider:api-football", config.QUEUE_PREFIX))
+        .catch(() => null),
+      redis
+        .get(redisKey("health:worker:football-ingestion", config.QUEUE_PREFIX))
+        .catch(() => null),
+      redis
+        .get(redisKey("health:worker:outbox-dispatcher", config.QUEUE_PREFIX))
+        .catch(() => null),
+      redis
+        .get(redisKey("health:worker:event-processor", config.QUEUE_PREFIX))
+        .catch(() => null),
+      redis
+        .get(redisKey("health:worker:content-generator", config.QUEUE_PREFIX))
+        .catch(() => null),
+    ]);
     const services = {
       database,
       redis: redisResult,
@@ -276,17 +287,22 @@ export async function buildApp(
             : "degraded",
       ingestion_worker: heartbeat === null ? "unhealthy" : "healthy",
       outbox_worker: outboxHeartbeat === null ? "unhealthy" : "healthy",
+      event_worker: eventHeartbeat === null ? "unhealthy" : "healthy",
+      content_worker: contentHeartbeat === null ? "unhealthy" : "healthy",
     };
     const status =
       database === "healthy" &&
       redisResult === "healthy" &&
       services.ingestion_worker === "healthy" &&
-      services.outbox_worker === "healthy"
+      services.outbox_worker === "healthy" &&
+      services.event_worker === "healthy" &&
+      services.content_worker === "healthy"
         ? services.football_provider === "healthy"
           ? "healthy"
           : "degraded"
         : "unhealthy";
     void reply.status(status === "unhealthy" ? 503 : 200);
+    void reply.header("Cache-Control", "no-store");
     return { status, services };
   });
 

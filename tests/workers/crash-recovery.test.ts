@@ -77,6 +77,7 @@ suite(
             REDIS_URL: resources.redisUrl,
             QUEUE_PREFIX: resources.namespace,
             OUTBOX_POLL_INTERVAL_MS: "500",
+            WORKER_HEARTBEAT_TTL_SECONDS: "10",
             API_FOOTBALL_BASE_URL: "https://example.invalid",
             API_FOOTBALL_KEY: "test-not-used",
             CURSOR_SIGNING_SECRET:
@@ -193,6 +194,26 @@ suite(
       }
       if (failures.length)
         throw new AggregateError(failures, "Worker-test cleanup failed");
+    }, 60_000);
+
+    it("refreshes idle consumer heartbeats and expires them after process death", async () => {
+      const idle = [start("event-processor"), start("content-generator")];
+      const keys = idle.map((child) =>
+        redisKey(`health:worker:${child.role}`, resources.namespace),
+      );
+      await waitFor("idle consumer startup", async () =>
+        (await redis!.mget(...keys)).every((value) => value !== null),
+      );
+      const initial = await redis!.mget(...keys);
+      await waitFor("idle consumer refresh", async () =>
+        (await redis!.mget(...keys)).every(
+          (value, index) => value !== null && value !== initial[index],
+        ),
+      );
+      for (const child of idle) await kill(child);
+      await waitFor("dead consumer expiry", async () =>
+        (await redis!.mget(...keys)).every((value) => value === null),
+      );
     }, 60_000);
 
     it("recovers a killed content worker without losing or duplicating committed publication", async () => {

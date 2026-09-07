@@ -7,6 +7,8 @@ import {
 import {
   createLogger,
   createRedis,
+  createProducerRedis,
+  startHeartbeat,
   redisKey,
   loadConfig,
   Metrics,
@@ -33,14 +35,29 @@ const worker = new Worker<FixtureChangeJob>(
     );
     metrics.increment("events_detected", processed.created);
     metrics.increment("duplicates_ignored", processed.duplicates);
-    await redis.set(
+  },
+  { connection: redis, concurrency: 10, prefix: config.QUEUE_PREFIX },
+);
+
+worker.on("error", (err) => logger.error({ err }, "worker connection error"));
+const healthRedis = createProducerRedis(config.REDIS_URL);
+healthRedis.on("error", (err) => logger.warn({ err }, "heartbeat Redis error"));
+await healthRedis
+  .connect()
+  .catch((err: unknown) =>
+    logger.warn({ err }, "heartbeat connection unavailable"),
+  );
+await worker.waitUntilReady();
+const stopHeartbeat = startHeartbeat(
+  () =>
+    healthRedis.set(
       redisKey("health:worker:event-processor", config.QUEUE_PREFIX),
       new Date().toISOString(),
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS,
-    );
-  },
-  { connection: redis, concurrency: 10, prefix: config.QUEUE_PREFIX },
+    ),
+  (err) => logger.warn({ err }, "worker heartbeat failed"),
+  config.WORKER_HEARTBEAT_TTL_SECONDS,
 );
 
 worker.on("failed", (job, error) => {
@@ -53,6 +70,8 @@ worker.on("failed", (job, error) => {
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "shutting down");
+  await stopHeartbeat();
+  healthRedis.disconnect();
   await worker.close();
   await Promise.all([prisma.$disconnect(), redis.quit()]);
 }

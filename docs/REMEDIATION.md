@@ -200,3 +200,11 @@ behavior, Prisma configuration, and packaged documentation assets.
 See [DEPENDENCY_SECURITY.md](DEPENDENCY_SECURITY.md) for versions, reachability,
 override compatibility/removal conditions, and verification boundaries. This does
 not close deployment gating, monitoring, OS/container scanning, or all stage-7 work.
+
+## Stage 7c (first slice): full-pipeline worker liveness
+
+Health now includes the event processor and content generator. Their heartbeats
+are periodic instead of depending on job arrivals, with bounded Redis writes,
+shutdown handling, and regression tests. Health responses disable caching.
+See [MONITORING.md](MONITORING.md) for rollout order and limitations. Backlog
+thresholds and external alert delivery are still outstanding.
