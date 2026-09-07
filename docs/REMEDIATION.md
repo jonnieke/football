@@ -130,5 +130,7 @@ full transport failure injection remain subsequent work.
 
 Stage 5 local verification: 119 unit tests pass across 16 files. Lint,
 typecheck, Prisma schema validation, build, and the native dependency/five-service
-runtime smoke checks pass. The new database observation scenario awaits its
-GitHub CI run; no application database migration was executed locally.
+runtime smoke checks pass. [GitHub CI for implementation commit cc1003f](https://github.com/jonnieke/football/actions/runs/34155464137)
+passed all 122 tests across 19 files, including all three isolated integration
+scenarios, and its build/runtime checks. The observation migration was exercised
+only in isolated CI schemas; no application database migration was executed.
