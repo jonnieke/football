@@ -6,6 +6,8 @@
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "build": "pnpm -r build",
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "verify:vercel": "node scripts/verify-vercel.mjs",
     "verify:runtime": "node scripts/verify-runtime.mjs",
     "dev": "concurrently -k -n api,ingestion,events,content,outbox \"pnpm --filter @fcp/api dev\" \"pnpm --filter @fcp/football-ingestion dev\" \"pnpm --filter @fcp/event-processor dev\" \"pnpm --filter @fcp/content-generator dev\" \"pnpm --filter @fcp/outbox-dispatcher dev\"",
     "outbox:recover": "tsx scripts/outbox-recovery.ts",

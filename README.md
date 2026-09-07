@@ -102,6 +102,7 @@ See [.env.example](.env.example). Credentials are environment-only and must neve
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Vercel API deployment](docs/VERCEL.md)
 - [Database model](docs/DATABASE_MODEL.md)
 - [API](docs/API.md)
 - [Feed publication and cursor recovery](docs/FEED_PUBLICATION.md)

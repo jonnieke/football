@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": true
   },
+  "exclude": ["**/node_modules/**", "**/dist/**", "**/.vercel/**"],
   "include": [
     "apps/**/*.ts",
     "workers/**/*.ts",

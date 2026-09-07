@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --config ../../tsup.runtime.config.ts --format esm --sourcemap",
+    "build": "tsup src/index.ts src/handler.ts src/app.ts --config ../../tsup.runtime.config.ts --format esm --sourcemap",
     "start": "node dist/index.js"
   },
   "dependencies": {

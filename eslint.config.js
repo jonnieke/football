@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "**/.vercel/**",
       "**/node_modules/**",
       "**/generated/**",
       "**/coverage/**",
