@@ -1,0 +1,13 @@
+.git
+**/node_modules
+**/dist
+**/coverage
+.env
+.env.*
+!.env.example
+**/*.log
+**/*.pem
+**/*.key
+**/*.tsbuildinfo
+packages/database/generated
+packages/database/src/generated

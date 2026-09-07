@@ -1,0 +1,18 @@
+{
+  "name": "@fcp/content-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --config ../../tsup.runtime.config.ts --format esm --sourcemap",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@fcp/content-core": "workspace:*",
+    "@fcp/database": "workspace:*",
+    "@fcp/shared": "workspace:*",
+    "bullmq": "6.3.1",
+    "uuid": "14.0.2"
+  }
+}

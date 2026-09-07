@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fcp/shared": ["packages/shared/src/index.ts"],
+      "@fcp/database": ["packages/database/src/index.ts"],
+      "@fcp/football-core": ["packages/football-core/src/index.ts"],
+      "@fcp/football-provider": ["packages/football-provider/src/index.ts"],
+      "@fcp/content-core": ["packages/content-core/src/index.ts"],
+      "@fcp/api": ["apps/api/src/app.ts"]
+    }
+  }
+}

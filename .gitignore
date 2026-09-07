@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+packages/database/generated/
+packages/database/src/generated/
+*.tsbuildinfo
+*.pem
+*.key
