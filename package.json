@@ -14,6 +14,7 @@
     "source:review": "tsx scripts/source-reviews.ts",
     "feed:reset-cursors": "tsx scripts/reset-feed-cursors.ts",
     "lint": "eslint .",
+    "audit:dependencies": "pnpm audit --audit-level low",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
@@ -45,6 +46,13 @@
     "typescript": "5.9.2",
     "typescript-eslint": "8.41.0",
     "uuid": "14.0.2",
-    "vitest": "3.2.4"
+    "vitest": "3.2.7"
+  },
+  "pnpm": {
+    "overrides": {
+      "concurrently>shell-quote": "1.10.0",
+      "@prisma/config>deepmerge-ts": "8.0.2",
+      "prisma>mysql2": "3.24.3"
+    }
   }
 }

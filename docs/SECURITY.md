@@ -1,5 +1,7 @@
 # Security
 
+Dependency updates and audit policy: [DEPENDENCY_SECURITY.md](DEPENDENCY_SECURITY.md).
+
 - Environment variables are validated at startup; secrets are absent from source.
 - Partner keys use random entropy, a lookup-only prefix, and Argon2id hashes.
 - Disabled/revoked clients cannot authenticate.

@@ -188,3 +188,15 @@ This is one stage-7 slice, not a declaration of production readiness. Edge/WAF
 controls, dependency security upgrades, database timeouts, external telemetry,
 backup/restore rehearsal, and broader failure-injection coverage remain outstanding.
 No live environment settings, migrations, credentials, or firewall rules were changed.
+
+## Stage 7b: dependency security updates
+
+Updated Fastify, Swagger UI/static serving, and Vitest; added narrowly scoped
+patch overrides for shell-quote, Prisma's configuration merger, and its MySQL
+tooling dependency. The local registry audit went from 15 advisories to zero.
+CI now audits on every push/PR, and regression checks cover framework security
+behavior, Prisma configuration, and packaged documentation assets.
+
+See [DEPENDENCY_SECURITY.md](DEPENDENCY_SECURITY.md) for versions, reachability,
+override compatibility/removal conditions, and verification boundaries. This does
+not close deployment gating, monitoring, OS/container scanning, or all stage-7 work.

@@ -99,6 +99,10 @@ try {
     const response = await app.inject({ method:'GET', url:'/docs/json' });
     assert.equal(response.statusCode, 200);
     assert.match(response.json().openapi, /^3[.]/);
+    for (const url of ['/docs/', '/docs/static/swagger-ui.css']) {
+      const asset = await app.inject({ method:'GET', url });
+      assert.equal(asset.statusCode, 200, url);
+    }
     const unauthorized = await app.inject({ method:'GET', url:'/v1/feed' });
     assert.equal(unauthorized.statusCode, 401);
     await app.close();

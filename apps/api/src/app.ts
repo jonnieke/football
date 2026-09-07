@@ -206,11 +206,21 @@ export async function buildApp(
   app.setErrorHandler((error, request, reply) => {
     const known = error instanceof AppError;
     const validation = error instanceof ZodError;
+    const frameworkStatus =
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number" &&
+      Number.isInteger(error.statusCode) &&
+      error.statusCode >= 400 &&
+      error.statusCode <= 599
+        ? error.statusCode
+        : 500;
     const statusCode = known
       ? error.statusCode
       : validation
         ? 400
-        : (error.statusCode ?? 500);
+        : frameworkStatus;
     const code = known
       ? error.code
       : statusCode === 400

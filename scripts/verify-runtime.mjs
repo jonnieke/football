@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from "prisma/config";
+
+// Check the configuration API without loading .env or connecting. Prisma generate
+// and the isolated migration tests separately exercise the actual file loader/merger.
+const prismaConfig = defineConfig({
+  schema: "schema.prisma",
+  migrations: { path: "migrations", seed: "seed-command" },
+  datasource: { url: "postgresql://unused:unused@127.0.0.1:1/unused" },
+});
+assert.equal(prismaConfig.schema, "schema.prisma");
+assert.equal(prismaConfig.migrations.seed, "seed-command");
+assert.equal(
+  prismaConfig.datasource.url,
+  "postgresql://unused:unused@127.0.0.1:1/unused",
+);
+console.log("PASS: Prisma configuration API compatibility");
 
 // No database, Redis, upstream requests, or inherited credentials are used.
 const root = new URL("../", import.meta.url);
