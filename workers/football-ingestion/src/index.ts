@@ -1,21 +1,16 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { ApiFootballProvider } from "@fcp/football-provider";
 import { getPrisma, persistNormalizedFixture } from "@fcp/database";
-import {
-  createLogger,
-  createRedis,
-  errorMessage,
-  loadConfig,
-  Metrics,
-} from "@fcp/shared";
+import { createLogger, createProducerRedis, loadConfig } from "@fcp/shared";
 import { v7 as uuidv7 } from "uuid";
+import { collectFixtures } from "./polling.js";
 
 const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL).child({
   worker: "football-ingestion",
 });
 const prisma = getPrisma(config.DATABASE_URL);
-const redis = createRedis(config.REDIS_URL);
-const metrics = new Metrics();
+const redis = createProducerRedis(config.REDIS_URL);
 const provider = new ApiFootballProvider(
   {
     baseUrl: config.API_FOOTBALL_BASE_URL,
@@ -25,59 +20,107 @@ const provider = new ApiFootballProvider(
   },
   logger,
 );
+const lockKey = "lock:football-ingestion:live";
+const lockMs = 60_000;
+const renewScript =
+  "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end";
+const releaseScript =
+  "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+let stopping = false;
+let nextDiscovery = 0;
+const stop = new AbortController();
+redis.on("error", (error) =>
+  logger.error({ err: error }, "ingestion Redis error"),
+);
 
 async function poll(): Promise<void> {
-  const lockKey = "lock:football-ingestion:live";
-  const lock = await redis.set(
-    lockKey,
-    process.pid.toString(),
-    "EX",
-    config.LIVE_POLL_INTERVAL_SECONDS,
-    "NX",
-  );
-  if (lock !== "OK") return;
+  const owner = uuidv7();
+  if ((await redis.set(lockKey, owner, "PX", lockMs, "NX")) !== "OK") return;
+  let lost = false;
+  let renewing = false;
+  const heartbeat = setInterval(() => {
+    if (renewing) return;
+    renewing = true;
+    void redis
+      .eval(renewScript, 1, lockKey, owner, lockMs)
+      .then((result) => {
+        if (result !== 1) lost = true;
+      })
+      .catch(() => {
+        lost = true;
+      })
+      .finally(() => {
+        renewing = false;
+      });
+  }, lockMs / 3);
   const startedAt = Date.now();
-  const run = await prisma.pollingRun.create({
-    data: { id: uuidv7(), provider: "api-football", status: "running" },
-  });
+  let runId: string | undefined;
   try {
+    runId = (
+      await prisma.pollingRun.create({
+        data: { id: uuidv7(), provider: "api-football", status: "running" },
+      })
+    ).id;
     const enabled = await prisma.competition.findMany({
-      where: { enabled: true },
+      where: { enabled: true, source: "api-football" },
       select: { sourceId: true, season: true },
     });
-    const enabledKeys = new Set(
-      enabled.map((item) => `${item.sourceId}:${item.season}`),
+    if (enabled.length === 0)
+      throw new Error(
+        "No enabled API-Football competitions; seed or configure competitions before polling",
+      );
+    const now = new Date();
+    const tracked = await prisma.fixture.findMany({
+      where: {
+        source: "api-football",
+        competition: { enabled: true },
+        kickoffAt: { lte: new Date(now.getTime() + 86_400_000) },
+        OR: [
+          { status: { notIn: ["finished", "cancelled", "abandoned"] } },
+          { kickoffAt: { gte: new Date(now.getTime() - 3 * 86_400_000) } },
+        ],
+      },
+      orderBy: [{ lastPolledAt: "asc" }, { id: "asc" }],
+      take: config.RECONCILE_BATCH_SIZE,
+      select: { sourceFixtureId: true },
+    });
+    const discover = Date.now() >= nextDiscovery;
+    const fixtures = await collectFixtures(
+      provider,
+      enabled,
+      tracked.map((item) => item.sourceFixtureId),
+      discover,
+      now,
     );
-    const received = await provider.getLiveFixtures();
-    const fixtures =
-      enabledKeys.size === 0
-        ? received
-        : received.filter((fixture) =>
-            enabledKeys.has(
-              `${fixture.competition.sourceId}:${fixture.competition.season}`,
-            ),
-          );
     let changedFixtures = 0;
     for (const fixture of fixtures) {
-      const result = await persistNormalizedFixture(prisma, fixture);
-      if (result.changed && result.previousStateId !== undefined) {
+      if (stopping || lost) throw new Error("Ingestion stopped or lease lost");
+      // All source facts are captured before the short database transaction.
+      const events = [
+        "scheduled",
+        "pre_match",
+        "postponed",
+        "cancelled",
+      ].includes(fixture.status)
+        ? []
+        : await provider.getFixtureEvents(fixture.sourceFixtureId);
+      if (lost || (await redis.get(lockKey)) !== owner)
+        throw new Error("Ingestion lease lost before persistence");
+      if ((await persistNormalizedFixture(prisma, fixture, events)).changed)
         changedFixtures += 1;
-      }
     }
-    const durationMs = Date.now() - startedAt;
+    if (discover)
+      nextDiscovery = Date.now() + config.SCHEDULE_POLL_INTERVAL_SECONDS * 1000;
     await prisma.pollingRun.update({
-      where: { id: run.id },
+      where: { id: runId },
       data: {
         status: "succeeded",
         fixturesRetrieved: fixtures.length,
         changedFixtures,
-        durationMs,
+        durationMs: Date.now() - startedAt,
         finishedAt: new Date(),
       },
     });
-    metrics.increment("poll_success");
-    metrics.increment("fixtures_retrieved", fixtures.length);
-    metrics.observe("poll_duration_ms", durationMs);
     await redis.set(
       "health:worker:football-ingestion",
       new Date().toISOString(),
@@ -94,51 +137,55 @@ async function poll(): Promise<void> {
       {
         fixtures_retrieved: fixtures.length,
         changed_fixtures: changedFixtures,
-        duration_ms: durationMs,
       },
-      "live poll completed",
+      "fixture observations captured",
     );
   } catch (error) {
-    metrics.increment("poll_failure");
-    await prisma.pollingRun.update({
-      where: { id: run.id },
-      data: {
-        status: "failed",
-        durationMs: Date.now() - startedAt,
-        errorCode: error instanceof Error ? error.name : "UNKNOWN",
-        finishedAt: new Date(),
-      },
-    });
+    if (runId !== undefined)
+      await prisma.pollingRun.update({
+        where: { id: runId },
+        data: {
+          status: "failed",
+          errorCode: error instanceof Error ? error.name : "UNKNOWN",
+          durationMs: Date.now() - startedAt,
+          finishedAt: new Date(),
+        },
+      });
     await redis.set(
       "health:provider:api-football",
       "unhealthy",
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS * 2,
     );
-    logger.error({ err: error, provider: "api-football" }, "live poll failed");
+    throw error;
   } finally {
-    const owner = await redis.get(lockKey);
-    if (owner === process.pid.toString()) await redis.del(lockKey);
+    clearInterval(heartbeat);
+    await redis.eval(releaseScript, 1, lockKey, owner);
   }
 }
 
-async function shutdown(signal: string): Promise<void> {
-  clearInterval(timer);
-  logger.info({ signal }, "shutting down");
-  await Promise.all([prisma.$disconnect(), redis.quit()]);
+function shutdown(signal: string): void {
+  logger.info({ signal }, "stopping after active poll");
+  stopping = true;
+  stop.abort();
 }
-
-process.on("SIGTERM", () => {
-  void shutdown("SIGTERM");
-});
-process.on("SIGINT", () => {
-  void shutdown("SIGINT");
-});
-
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 await redis.connect();
-await poll();
-const timer = setInterval(() => {
-  void poll().catch((error) =>
-    logger.error({ err: errorMessage(error) }, "poll loop failed"),
-  );
-}, config.LIVE_POLL_INTERVAL_SECONDS * 1000);
+try {
+  // Await each poll: timers cannot overlap, and shutdown cannot close its DB mid-write.
+  while (!stopping) {
+    try {
+      await poll();
+    } catch (error) {
+      logger.error({ err: error }, "poll failed");
+    }
+    if (!stopping)
+      await delay(config.LIVE_POLL_INTERVAL_SECONDS * 1000, undefined, {
+        signal: stop.signal,
+      }).catch(() => undefined);
+  }
+} finally {
+  redis.disconnect();
+  await prisma.$disconnect();
+}

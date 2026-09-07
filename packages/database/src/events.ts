@@ -11,10 +11,40 @@ export async function createCanonicalEvent(
   assertInternalEventIds(event);
   const eventFingerprint = createEventFingerprint(event);
   const save = async (tx: Prisma.TransactionClient, conflict?: unknown) => {
-    const existing = await tx.footballEvent.findUnique({
+    let existing = await tx.footballEvent.findUnique({
       where: { eventFingerprint },
       select: { id: true },
     });
+    // Reconcile the pre-v2 positional IDs without rewriting immutable history.
+    // Only exact legacy source fixture/team/player/type/time facts match.
+    if (
+      existing === null &&
+      event.sourceEventId?.startsWith("api-football:v2:")
+    ) {
+      const parts = event.sourceEventId.split(":");
+      const candidates = await tx.footballEvent.findMany({
+        where: {
+          fixtureId: event.fixtureId,
+          eventType: event.eventType,
+          minute: event.minute ?? null,
+          extraTime: event.extraTime ?? null,
+          sourceEventId: { startsWith: `${parts[2]}:` },
+        },
+        select: { id: true, sourceEventId: true },
+      });
+      existing =
+        candidates.find((candidate) => {
+          const old = candidate.sourceEventId?.split(":");
+          return (
+            old !== undefined &&
+            /^\d+$/.test(old[2] ?? "") &&
+            old[0] === parts[2] &&
+            old[1] === (parts[3] === "none" ? "0" : parts[3]) &&
+            old[3] === parts[5] &&
+            old[4] === parts[6]
+          );
+        }) ?? null;
+    }
     if (existing !== null) {
       // Duplicate processing must still repair a missing content handoff.
       await ensureContentWork(tx, existing.id);

@@ -10,6 +10,12 @@ Work handoffs now use a PostgreSQL transactional outbox and an independent
 dispatcher. Apply the new migration before starting updated workers. See
 [durable delivery and recovery](docs/OUTBOX.md) for rollout requirements.
 
+Stage 5 also captures source events in fixture snapshots. Read the
+[ingestion upgrade procedure](docs/INGESTION.md#stage-5-rollout) before changing
+running workers: drain legacy work and apply the observation migration first.
+The [event contract](docs/EVENT_MODEL.md) now includes `score_updated` and
+does not invent event-time scores for historical source events.
+
 ```text
 API-Football -> ingestion -> fixture snapshots -> event processor
                                             -> immutable event ledger

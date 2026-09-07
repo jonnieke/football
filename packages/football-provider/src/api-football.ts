@@ -145,6 +145,19 @@ export function normalizeApiFootballFixture(
   receivedAt = new Date(),
 ): NormalizedFixture {
   const sourceFixtureId = String(input.fixture.id);
+  const status = mapApiFootballStatus(input.fixture.status.short);
+  if (
+    !["scheduled", "pre_match", "postponed", "cancelled", "unknown"].includes(
+      status,
+    ) &&
+    (input.goals.home === null || input.goals.away === null)
+  ) {
+    throw new ProviderError(
+      "MISSING_UPSTREAM_SCORE",
+      "Played fixture has an unknown score",
+      false,
+    );
+  }
   return {
     id: `api-football:fixture:${sourceFixtureId}`,
     source: "api-football",
@@ -175,13 +188,18 @@ export function normalizeApiFootballFixture(
 
 function mapEventType(type: string, detail: string): FootballEventType | null {
   const value = `${type} ${detail}`.toLowerCase();
-  if (value.includes("cancel")) return "goal_cancelled";
+  if (type.toLowerCase() === "var" && detail.toLowerCase() === "goal cancelled")
+    return "goal_cancelled";
   if (value.includes("missed penalty")) return "penalty_missed";
   if (value.includes("own goal")) return "own_goal";
   if (value.includes("penalty") && type.toLowerCase() === "goal")
     return "penalty_goal";
   if (type.toLowerCase() === "goal") return "goal";
-  if (value.includes("red card")) return "red_card";
+  if (
+    type.toLowerCase() === "card" &&
+    (value.includes("red card") || value.includes("second yellow"))
+  )
+    return "red_card";
   return null;
 }
 
@@ -228,6 +246,26 @@ export class ApiFootballProvider implements FootballProvider {
           );
         }
         const payload: unknown = await response.json();
+        const envelope = z
+          .object({
+            errors: z
+              .union([z.array(z.unknown()), z.record(z.string(), z.unknown())])
+              .optional(),
+          })
+          .safeParse(payload);
+        if (
+          envelope.success &&
+          envelope.data.errors !== undefined &&
+          Object.keys(envelope.data.errors).length > 0
+        ) {
+          // Never treat quota/authentication/parameter errors as an empty match list.
+          throw new ProviderError(
+            "UPSTREAM_APPLICATION_ERROR",
+            "API-Football returned an error envelope",
+            false,
+            response.status,
+          );
+        }
         const parsed = schema.safeParse(payload);
         if (!parsed.success) {
           throw new ProviderError(
@@ -276,11 +314,23 @@ export class ApiFootballProvider implements FootballProvider {
   }
 
   public async getLiveFixtures(): Promise<NormalizedFixture[]> {
+    const receivedAt = new Date();
     const data = await this.request(
       "/fixtures?live=all",
       fixturesResponseSchema,
     );
+    return data.response.map((fixture) =>
+      normalizeApiFootballFixture(fixture, receivedAt),
+    );
+  }
+
+  public async getFixturesByDate(date: string): Promise<NormalizedFixture[]> {
+    z.iso.date().parse(date);
     const receivedAt = new Date();
+    const data = await this.request(
+      `/fixtures?date=${encodeURIComponent(date)}&timezone=UTC`,
+      fixturesResponseSchema,
+    );
     return data.response.map((fixture) =>
       normalizeApiFootballFixture(fixture, receivedAt),
     );
@@ -289,12 +339,15 @@ export class ApiFootballProvider implements FootballProvider {
   public async getFixture(
     fixtureId: string,
   ): Promise<NormalizedFixture | null> {
+    const receivedAt = new Date();
     const data = await this.request(
       `/fixtures?id=${encodeURIComponent(fixtureId)}`,
       fixturesResponseSchema,
     );
     const fixture = data.response[0];
-    return fixture === undefined ? null : normalizeApiFootballFixture(fixture);
+    return fixture === undefined
+      ? null
+      : normalizeApiFootballFixture(fixture, receivedAt);
   }
 
   public async getFixtureEvents(
@@ -304,12 +357,14 @@ export class ApiFootballProvider implements FootballProvider {
       `/fixtures/events?fixture=${encodeURIComponent(fixtureId)}`,
       eventsResponseSchema,
     );
-    return data.response.flatMap((event, index) => {
+    return data.response.flatMap((event) => {
       const eventType = mapEventType(event.type, event.detail);
       if (eventType === null) return [];
       return [
         {
-          sourceEventId: `${fixtureId}:${event.time.elapsed ?? 0}:${index}:${event.team.id}:${event.player.id ?? "none"}:${event.detail}`,
+          // The provider has no event ID. This semantic key is independent of
+          // response order, display names, comments, and the current score.
+          sourceEventId: `api-football:v2:${fixtureId}:${event.time.elapsed ?? "none"}:${event.time.extra ?? "none"}:${event.team.id}:${event.player.id ?? "none"}:${eventType}`,
           source: "api-football" as const,
           sourceFixtureId: fixtureId,
           eventType,

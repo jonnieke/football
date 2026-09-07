@@ -4,10 +4,10 @@ Work is applied in independently verified stages. Completing one stage does not
 mean the platform is production-ready.
 
 1. Runtime packaging and queue job IDs (implemented; local smoke checks pass).
-2. Isolated integration-test resources (implemented; real-store run pending).
+2. Isolated integration-test resources (implemented; GitHub CI real-store run passed).
 3. Provider-to-internal player/team identity mapping (implemented).
-4. Durable database-to-queue delivery and replay/reconciliation (implemented; live-store verification pending).
-5. Complete event detection, stable identity, and match lifecycle reconciliation.
+4. Durable database-to-queue delivery and replay/reconciliation (implemented; GitHub CI database rollback scenarios passed; real worker crash testing pending).
+5. Event observations, reorder-stable identity, and lifecycle reconciliation (first pass implemented; source revision ambiguity remains).
 6. Commit-ordered feed publication and cursor recovery.
 7. Failure-injection acceptance tests, security, deployment, and monitoring.
 
@@ -106,3 +106,29 @@ Default test execution passes 91 and skips the two real-store scenarios.
 Lint, typecheck, Prisma schema validation, build, and compiled runtime smoke
 checks pass, including the new dispatcher. The migration is written and the
 client regenerated, but the migration has not been applied here.
+
+## Stage 5 changes
+
+- The stage 1–4 checkpoint passed GitHub CI on Node 24, PostgreSQL 17, and Redis 8.
+  Its two integration scenarios passed; these are direct consumer/repository
+  tests, not independent worker-process crash tests.
+- Source events are persisted with fixture observations and consumed without
+  refetching later provider state. Event-only and late arrivals are detected.
+- Source IDs no longer include array position; v2 fingerprints ignore mutable
+  score/name enrichment. Exact legacy source IDs remain recognizable.
+- Score-only changes emit aggregate updates/corrections, not fabricated goals.
+  Historical content no longer falls back to the fixture's latest score.
+- Added UTC schedule discovery, tracked-fixture reconciliation, fail-closed
+  competition configuration, serial polling, renewable ownership, and database
+  stale-write protection. HTTP-200 provider errors cannot masquerade as no data.
+- Added a source-observation migration and regression tests covering these paths.
+
+See `INGESTION.md` and `EVENT_MODEL.md` for rollout and limitations. Stage 5 is
+not claimed fully closed: changing source identity fields and indistinguishable
+events still need a revision/ambiguity policy. Commit-ordered publication and
+full transport failure injection remain subsequent work.
+
+Stage 5 local verification: 119 unit tests pass across 16 files. Lint,
+typecheck, Prisma schema validation, build, and the native dependency/five-service
+runtime smoke checks pass. The new database observation scenario awaits its
+GitHub CI run; no application database migration was executed locally.

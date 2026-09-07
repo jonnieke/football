@@ -113,6 +113,7 @@ model FixtureState {
   homeScore Int      @map("home_score")
   awayScore Int      @map("away_score")
   rawHash   String   @map("raw_hash")
+  sourceEvents Json? @map("source_events")
   capturedAt DateTime @default(now()) @map("captured_at")
   fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
 

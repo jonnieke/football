@@ -34,6 +34,7 @@ export const FOOTBALL_EVENT_TYPES = [
   "match_abandoned",
   "match_cancelled",
   "score_correction",
+  "score_updated",
 ] as const;
 
 export type FootballEventType = (typeof FOOTBALL_EVENT_TYPES)[number];

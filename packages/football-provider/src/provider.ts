@@ -6,6 +6,7 @@ import type {
 
 export interface FootballProvider {
   getLiveFixtures(): Promise<NormalizedFixture[]>;
+  getFixturesByDate(date: string): Promise<NormalizedFixture[]>;
   getFixture(fixtureId: string): Promise<NormalizedFixture | null>;
   getFixtureEvents(fixtureId: string): Promise<NormalizedSourceEvent[]>;
   getCompetitions(): Promise<NormalizedCompetition[]>;

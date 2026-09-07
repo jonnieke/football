@@ -154,7 +154,10 @@ describeIntegration(
         },
         [resolved.event],
       );
-      expect(drafts).toHaveLength(1);
+      expect(drafts.map((draft) => draft.eventType)).toEqual([
+        "goal",
+        "score_updated",
+      ]);
       const canonical = await createCanonicalEvent(prisma, drafts[0]!);
       expect(canonical.created).toBe(true);
       const stored = await prisma.footballEvent.findUniqueOrThrow({

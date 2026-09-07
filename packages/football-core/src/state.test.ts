@@ -56,10 +56,10 @@ describe("detectFixtureEvents", () => {
     ).toBe("score_correction");
   });
 
-  it("gives catch-up goals distinct deterministic identities", () => {
+  it("reports an aggregate update instead of inventing catch-up goals", () => {
     const events = detectFixtureEvents("fixture", state(0, 0), state(2, 0));
-    expect(events).toHaveLength(2);
-    expect(events[0]?.sourceEventId).not.toBe(events[1]?.sourceEventId);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.eventType).toBe("score_updated");
     expect(detectFixtureEvents("fixture", state(0, 0), state(2, 0))).toEqual(
       events,
     );

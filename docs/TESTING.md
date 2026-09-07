@@ -48,7 +48,9 @@ schema name before any manual cleanup. Never drop the whole test database to
 clean one run.
 
 The integration suites exercise repositories, deterministic content, Fastify
-feed requests, and outbox transaction rollback/recovery. The outbox suite
+feed requests, outbox transaction rollback/recovery, and immutable fixture
+observations (event-only changes, reordered replay, final-state reconciliation,
+and concurrent stale-writer protection). The outbox suite
 simulates queue transport while using real database transactions. These are
 **not yet** independent queue-worker end-to-end tests; actual Redis/worker
 failure-injection verification remains a later acceptance stage.

@@ -33,6 +33,13 @@ const environmentSchema = z.object({
     .min(5)
     .max(300)
     .default(15),
+  SCHEDULE_POLL_INTERVAL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86400)
+    .default(900),
+  RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
   SHORT_CONTENT_MAX_LENGTH: z.coerce
     .number()
     .int()

@@ -16,6 +16,35 @@ const goal: ContentContext = {
 };
 
 describe("deterministic content generation", () => {
+  it("renders unknown historical scores without inventing a result", () => {
+    const content = generateContent(
+      {
+        eventType: "red_card",
+        minute: 45,
+        extraTime: 2,
+        homeTeam: "Home",
+        awayTeam: "Away",
+        playerName: "Player",
+        scoringTeamName: "Home",
+        competitionSlug: "test",
+      },
+      160,
+    );
+    expect(content.standardText).toContain("45+2'");
+    expect(content.standardText).toContain("Home v Away");
+    expect(content.standardText).toContain("Player — Home");
+    expect(content.standardText).not.toContain("undefined");
+  });
+  it.each(["own_goal", "penalty_goal"] as const)(
+    "preserves %s and minute under compaction",
+    (eventType) => {
+      const content = generateContent({ ...goal, eventType }, 55);
+      expect(content.shortText).toContain(
+        eventType === "own_goal" ? "OWN GOAL" : "PENALTY GOAL",
+      );
+      expect(content.shortText).toContain("67'");
+    },
+  );
   it("renders repeatable goal content", () => {
     expect(generateContent(goal, 160)).toEqual(
       generateContent({ ...goal }, 160),

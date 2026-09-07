@@ -12,6 +12,7 @@ function harness() {
   const tx = {
     footballEvent: {
       findUnique: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({ id }),
     },
     workOutbox: { upsert: vi.fn().mockResolvedValue({ id }) },
@@ -25,6 +26,35 @@ function harness() {
   return { tx, transaction, prisma };
 }
 describe("atomic event and content handoff", () => {
+  it("recognizes legacy positional IDs without rewriting their history", async () => {
+    const { tx, prisma } = harness();
+    tx.footballEvent.findMany.mockResolvedValue([
+      { id, sourceEventId: "42:12:7:1:123:Normal Goal" },
+    ]);
+    expect(
+      await createCanonicalEvent(prisma, {
+        ...draft,
+        minute: 12,
+        sourceEventId: "api-football:v2:42:12:none:1:123:goal",
+      }),
+    ).toEqual({ id, created: false });
+    expect(tx.footballEvent.create).not.toHaveBeenCalled();
+  });
+  it("does not merge legacy events for a different source player", async () => {
+    const { tx, prisma } = harness();
+    tx.footballEvent.findMany.mockResolvedValue([
+      { id, sourceEventId: "42:12:7:1:999:Normal Goal" },
+    ]);
+    expect(
+      (
+        await createCanonicalEvent(prisma, {
+          ...draft,
+          minute: 12,
+          sourceEventId: "api-football:v2:42:12:none:1:123:goal",
+        })
+      ).created,
+    ).toBe(true);
+  });
   it("writes the event and outbox through the same transaction client", async () => {
     const { tx, transaction, prisma } = harness();
     expect(await createCanonicalEvent(prisma, draft)).toEqual({

@@ -27,54 +27,42 @@ export type EventDraft = Omit<NormalizedFootballEvent, "sourceEventId"> & {
 
 export function detectFixtureEvents(
   fixtureId: string,
-  previous: FixtureState,
+  previous: FixtureState | null,
   current: FixtureState,
   sourceEvents: readonly NormalizedFootballEvent[] = [],
+  observationId?: string,
 ): EventDraft[] {
   const comparison = compareFixtureStates(previous, current);
-  if (!comparison.changed) return [];
-
-  const events: EventDraft[] = [];
-  if (comparison.homeScoreDelta < 0 || comparison.awayScoreDelta < 0) {
+  // Source facts remain relevant when the aggregate score/status is unchanged,
+  // including late events. Canonical identity, not a minute cutoff, deduplicates.
+  const events: EventDraft[] = [...sourceEvents];
+  if (comparison.scoreChanged) {
+    // A scoreboard change is not evidence of N individual goals or a scorer.
+    // Keep an explicit observation rather than manufacture goal events.
     events.push({
       fixtureId,
-      eventType: "score_correction",
+      eventType:
+        comparison.homeScoreDelta < 0 || comparison.awayScoreDelta < 0
+          ? "score_correction"
+          : "score_updated",
+      ...(observationId === undefined
+        ? {}
+        : { sourceEventId: `observation:${observationId}:score` }),
       ...(current.minute === undefined ? {} : { minute: current.minute }),
       homeScore: current.score.home,
       awayScore: current.score.away,
     });
-  } else if (comparison.scoreChanged) {
-    const newSourceEvents = sourceEvents.filter((event) => {
-      if (!["goal", "own_goal", "penalty_goal"].includes(event.eventType))
-        return false;
-      return (
-        event.homeScore === current.score.home &&
-        event.awayScore === current.score.away
-      );
-    });
-    if (newSourceEvents.length > 0) {
-      events.push(...newSourceEvents);
-    } else {
-      const totalGoals = comparison.homeScoreDelta + comparison.awayScoreDelta;
-      for (let index = 0; index < totalGoals; index += 1) {
-        events.push({
-          fixtureId,
-          eventType: "goal",
-          sourceEventId: `state:${current.score.home}-${current.score.away}:${index + 1}-of-${totalGoals}`,
-          ...(current.minute === undefined ? {} : { minute: current.minute }),
-          homeScore: current.score.home,
-          awayScore: current.score.away,
-        });
-      }
-    }
   }
 
-  if (comparison.statusChanged) {
+  if (comparison.statusChanged || previous === null) {
     const eventType = statusEvents[current.status];
     if (eventType !== undefined) {
       events.push({
         fixtureId,
         eventType,
+        ...(observationId === undefined
+          ? {}
+          : { sourceEventId: `observation:${observationId}:status` }),
         ...(current.minute === undefined ? {} : { minute: current.minute }),
         homeScore: current.score.home,
         awayScore: current.score.away,
@@ -85,6 +73,16 @@ export function detectFixtureEvents(
 }
 
 export function createEventFingerprint(event: EventDraft): string {
+  if (
+    event.sourceEventId?.startsWith("api-football:v2:") ||
+    event.sourceEventId?.startsWith("observation:")
+  ) {
+    return createHash("sha256")
+      .update(
+        JSON.stringify([event.fixtureId, event.eventType, event.sourceEventId]),
+      )
+      .digest("hex");
+  }
   const canonical = [
     event.fixtureId,
     event.eventType,

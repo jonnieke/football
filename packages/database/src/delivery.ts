@@ -108,6 +108,7 @@ export async function processContentDelivery(
           typeof generateContent
         >[0]["eventType"],
         ...(event.minute === null ? {} : { minute: event.minute }),
+        ...(event.extraTime == null ? {} : { extraTime: event.extraTime }),
         homeTeam: event.fixture.homeTeam.name,
         ...(event.fixture.homeTeam.shortName === null
           ? {}
@@ -116,8 +117,8 @@ export async function processContentDelivery(
         ...(event.fixture.awayTeam.shortName === null
           ? {}
           : { awayTeamShort: event.fixture.awayTeam.shortName }),
-        homeScore: event.homeScore ?? event.fixture.homeScore,
-        awayScore: event.awayScore ?? event.fixture.awayScore,
+        ...(event.homeScore === null ? {} : { homeScore: event.homeScore }),
+        ...(event.awayScore === null ? {} : { awayScore: event.awayScore }),
         ...(event.playerName === null ? {} : { playerName: event.playerName }),
         ...(event.team === null ? {} : { scoringTeamName: event.team.name }),
         competitionSlug: event.fixture.competition.slug,

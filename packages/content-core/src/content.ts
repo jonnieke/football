@@ -3,12 +3,13 @@ import type { FootballEventType } from "@fcp/football-core";
 export interface ContentContext {
   eventType: FootballEventType;
   minute?: number;
+  extraTime?: number;
   homeTeam: string;
   homeTeamShort?: string;
   awayTeam: string;
   awayTeamShort?: string;
-  homeScore: number;
-  awayScore: number;
+  homeScore?: number;
+  awayScore?: number;
   playerName?: string;
   scoringTeamName?: string;
   competitionSlug: string;
@@ -23,6 +24,10 @@ export interface GeneratedContent {
 }
 
 const labels: Partial<Record<FootballEventType, string>> = {
+  goal: "GOAL",
+  own_goal: "OWN GOAL",
+  penalty_goal: "PENALTY GOAL",
+  score_updated: "SCORE UPDATE",
   match_started: "KICK-OFF",
   half_time: "HT",
   second_half_started: "SECOND HALF",
@@ -40,7 +45,9 @@ const labels: Partial<Record<FootballEventType, string>> = {
 };
 
 function minute(context: ContentContext): string {
-  return context.minute === undefined ? "" : ` ${context.minute}'`;
+  return context.minute === undefined
+    ? ""
+    : ` ${context.minute}${context.extraTime === undefined ? "" : `+${context.extraTime}`}'`;
 }
 
 function scoreLine(context: ContentContext, shortNames = false): string {
@@ -50,7 +57,9 @@ function scoreLine(context: ContentContext, shortNames = false): string {
   const away = shortNames
     ? (context.awayTeamShort ?? context.awayTeam)
     : context.awayTeam;
-  return `${home} ${context.homeScore}-${context.awayScore} ${away}`;
+  return context.homeScore === undefined || context.awayScore === undefined
+    ? `${home} v ${away}`
+    : `${home} ${context.homeScore}-${context.awayScore} ${away}`;
 }
 
 function render(context: ContentContext, shortNames = false): string {
@@ -69,7 +78,12 @@ function render(context: ContentContext, shortNames = false): string {
   const label =
     labels[context.eventType] ??
     context.eventType.replaceAll("_", " ").toUpperCase();
-  return `${label}${minute(context)}: ${score}.`;
+  const actor = ["red_card", "penalty_missed", "goal_cancelled"].includes(
+    context.eventType,
+  )
+    ? [context.playerName, context.scoringTeamName].filter(Boolean).join(" — ")
+    : "";
+  return `${label}${minute(context)}: ${score}.${actor === "" ? "" : ` ${actor}.`}`;
 }
 
 function compact(context: ContentContext, maxLength: number): string {
@@ -77,7 +91,7 @@ function compact(context: ContentContext, maxLength: number): string {
     render(context, false),
     render(context, true),
     `${labels[context.eventType] ?? "GOAL"}${minute(context)}: ${scoreLine(context, true)}.`,
-    `${scoreLine(context, true)} — ${labels[context.eventType] ?? "GOAL"}.`,
+    `${scoreLine(context, true)} — ${labels[context.eventType] ?? "GOAL"}${minute(context)}.`,
   ];
   const fitting = candidates.find((candidate) => candidate.length <= maxLength);
   if (fitting !== undefined) return fitting;
