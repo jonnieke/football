@@ -208,3 +208,12 @@ are periodic instead of depending on job arrivals, with bounded Redis writes,
 shutdown handling, and regression tests. Health responses disable caching.
 See [MONITORING.md](MONITORING.md) for rollout order and limitations. Backlog
 thresholds and external alert delivery are still outstanding.
+
+## Stage 7c (second slice): read-only backlog threshold check
+
+Added `monitor:check`, a bounded operator command reporting active/paused work,
+overdue source reviews and stale expected provider polling. Structured output and
+distinct warning/critical/unknown exit codes support a future independent monitor.
+Unit boundary tests and isolated PostgreSQL collection tests cover the rules. See
+MONITORING.md for thresholds, permissions, performance limits and notification gaps.
+No production data, schema, environment settings, or alert destination were changed.

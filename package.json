@@ -11,6 +11,7 @@
     "verify:runtime": "node scripts/verify-runtime.mjs",
     "dev": "concurrently -k -n api,ingestion,events,content,outbox \"pnpm --filter @fcp/api dev\" \"pnpm --filter @fcp/football-ingestion dev\" \"pnpm --filter @fcp/event-processor dev\" \"pnpm --filter @fcp/content-generator dev\" \"pnpm --filter @fcp/outbox-dispatcher dev\"",
     "outbox:recover": "tsx scripts/outbox-recovery.ts",
+    "monitor:check": "tsx scripts/monitor-check.ts",
     "source:review": "tsx scripts/source-reviews.ts",
     "feed:reset-cursors": "tsx scripts/reset-feed-cursors.ts",
     "lint": "eslint .",
