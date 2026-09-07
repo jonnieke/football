@@ -98,7 +98,7 @@ try {
     const app = await buildApp({ config, prisma:{}, redis:{}, logger:createLogger('silent') });
     const response = await app.inject({ method:'GET', url:'/docs/json' });
     assert.equal(response.statusCode, 200);
-    assert.match(response.json().openapi, /^3\./);
+    assert.match(response.json().openapi, /^3[.]/);
     const unauthorized = await app.inject({ method:'GET', url:'/v1/feed' });
     assert.equal(unauthorized.statusCode, 401);
     await app.close();
