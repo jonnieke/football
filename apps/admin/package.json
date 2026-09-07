@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm",
+    "build": "tsup src/index.ts --config ../../tsup.runtime.config.ts --format esm --sourcemap",
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@fcp/database": "workspace:*",
+    "@fcp/shared": "workspace:*",
+    "zod": "4.4.3",
     "fastify": "5.12.3"
   }
 }

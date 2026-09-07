@@ -1,9 +1,9 @@
 # Alert recipient management
 
-This checkpoint implements the recipient store and trusted-operator CLI. The admin
-application is still a placeholder: no settings page, administrator login, test-email
-button, Resend sending, or delivery history is implemented. No email is sent by
-these commands. Administrator identities and notification recipients are separate;
+The recipient store supports both the trusted-operator CLI and authenticated admin
+settings page. See [ADMIN_AUTH.md](ADMIN_AUTH.md) for Resend login setup. Test-alert
+sending and delivery history remain pending. No email is sent by these CLI commands.
+Administrator identities and notification recipients are separate;
 adding a recipient must never grant administrator access.
 
 ## Rollout
@@ -64,8 +64,8 @@ must not be forwarded into public CI logs.
 
 ## Remaining UI and Resend work
 
-Choose administrator sign-in and an approved admin list before exposing settings.
-Then wire the page to the validated, versioned operations. Resend requires a
+The settings page uses approved-admin Resend login links and versioned operations.
+Resend requires a
 server-side key and verified sender; these must be configured securely, not entered
 in chat or source files. Scheduled checks, duplicate suppression, recovery handling,
 recipient verification, test sends, and delivery/bounce tracking remain unimplemented.

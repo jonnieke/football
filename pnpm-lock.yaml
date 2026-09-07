@@ -64,9 +64,18 @@ importers:
 
   apps/admin:
     dependencies:
+      '@fcp/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@fcp/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       fastify:
         specifier: 5.12.3
         version: 5.12.3
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   apps/api:
     dependencies:

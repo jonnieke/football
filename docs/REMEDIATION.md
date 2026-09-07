@@ -225,3 +225,12 @@ an additive migration and trusted-operator CLI. Unit and isolated database tests
 cover validation, uniqueness, concurrent edits, removal and audit-failure rollback.
 See ALERT_RECIPIENTS.md. The admin settings page awaits administrator authentication;
 Resend delivery and scheduling are not implemented by this foundation.
+
+## Stage 7d: approved-admin Resend sign-in and settings UI
+
+Replaced the standalone admin placeholder with a recipient settings interface and
+browser-bound, single-use Resend login links. Added Redis-backed sessions, allowlist
+enforcement, origin/JSON checks, rate budgets, restrictive browser headers and
+session-derived audit actors. See ADMIN_AUTH.md for configuration, deployment
+separation, verification and remaining email-alert work. Nothing is activated in
+production by merely deploying the existing API-only Vercel project.

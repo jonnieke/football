@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "prisma/config";
 
@@ -20,6 +21,14 @@ console.log("PASS: Prisma configuration API compatibility");
 
 // No database, Redis, upstream requests, or inherited credentials are used.
 const root = new URL("../", import.meta.url);
+const adminBundle = readFileSync(
+  new URL("apps/admin/dist/index.js", root),
+  "utf8",
+);
+assert.doesNotMatch(
+  adminBundle,
+  /preview-inbox|test-key-not-real|Synthetic admin preview/,
+);
 const database = await import(new URL("packages/database/dist/index.js", root));
 const material = await database.createApiKeyMaterial();
 assert.equal(
@@ -30,6 +39,7 @@ console.log("PASS: compiled database module and native Argon2 hash/verify");
 
 for (const service of [
   "apps/api",
+  "apps/admin",
   "workers/football-ingestion",
   "workers/event-processor",
   "workers/content-generator",
@@ -42,6 +52,7 @@ for (const service of [
     "API_FOOTBALL_KEY",
     "API_FOOTBALL_BASE_URL",
     "CURSOR_SIGNING_SECRET",
+    "ADMIN_ORIGIN",
   ]) {
     delete env[key];
   }
@@ -63,7 +74,9 @@ for (const service of [
   );
   assert.match(
     result.stderr,
-    /Invalid environment configuration:/,
+    service === "apps/admin"
+      ? /Invalid administrator configuration/
+      : /Invalid environment configuration:/,
     `${service}: ${result.stderr}`,
   );
   assert.doesNotMatch(
