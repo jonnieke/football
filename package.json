@@ -10,6 +10,7 @@
     "dev": "concurrently -k -n api,ingestion,events,content,outbox \"pnpm --filter @fcp/api dev\" \"pnpm --filter @fcp/football-ingestion dev\" \"pnpm --filter @fcp/event-processor dev\" \"pnpm --filter @fcp/content-generator dev\" \"pnpm --filter @fcp/outbox-dispatcher dev\"",
     "outbox:recover": "tsx scripts/outbox-recovery.ts",
     "source:review": "tsx scripts/source-reviews.ts",
+    "feed:reset-cursors": "tsx scripts/reset-feed-cursors.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

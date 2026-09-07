@@ -145,8 +145,10 @@ export interface PartnerApiClient {
 }
 
 export interface Cursor {
-  publishedAt: string;
-  id: string;
+  epoch: string;
+  sequence: string;
+  channel: string | null;
+  eventType: string | null;
 }
 
 export interface SystemHealth {

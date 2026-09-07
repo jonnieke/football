@@ -191,12 +191,24 @@ model ContentItem {
   status       String   @default("published")
   createdAt    DateTime @default(now()) @map("created_at")
   publishedAt  DateTime? @map("published_at")
+  publicationSequence BigInt? @unique @map("publication_sequence")
+  eventType String? @map("event_type")
   event        FootballEvent @relation(fields: [eventId], references: [id])
 
   @@unique([eventId, channel, contentType])
   @@index([publishedAt, id])
   @@index([channel, publishedAt, id])
+  @@index([channel, publicationSequence])
+  @@index([eventType, publicationSequence])
   @@map("content_items")
+}
+
+model FeedPublicationState {
+  id Int @id
+  epoch String @db.Uuid
+  highWater BigInt @default(0) @map("high_water")
+
+  @@map("feed_publication_state")
 }
 
 model ContentTemplate {

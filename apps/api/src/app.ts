@@ -29,7 +29,7 @@ export interface ApiDependencies {
 }
 
 const feedQuerySchema = z.object({
-  after: z.string().min(1).optional(),
+  after: z.string().min(1).max(2048).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   channel: z.string().min(1).max(80).optional(),
   event_type: z.string().min(1).max(80).optional(),

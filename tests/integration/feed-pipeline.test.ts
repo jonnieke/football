@@ -208,6 +208,18 @@ describeIntegration(
         headers: { authorization: `Bearer ${apiKey}` },
       });
       expect(empty.json<{ items: unknown[] }>().items).toHaveLength(0);
+      expect(empty.json<{ next_cursor: string }>().next_cursor).toBe(
+        firstBody.next_cursor,
+      );
+      const wrongScope = await app.inject({
+        method: "GET",
+        url: `/v1/feed?channel=other&after=${encodeURIComponent(firstBody.next_cursor)}`,
+        headers: { authorization: `Bearer ${apiKey}` },
+      });
+      expect(wrongScope.statusCode).toBe(400);
+      expect(wrongScope.json<{ error: { code: string } }>().error.code).toBe(
+        "CURSOR_SCOPE_MISMATCH",
+      );
 
       const second = await createCanonicalEvent(prisma, {
         fixtureId: fixture.id,

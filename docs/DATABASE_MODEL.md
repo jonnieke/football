@@ -12,4 +12,4 @@ polling_runs             system_incidents
 
 `competitions`, `teams`, and `players` use `(source, source_id)` uniqueness. `fixtures` uses `(source, source_fixture_id)`. `fixture_states` is append-only. `football_events.event_fingerprint` is globally unique and is the durable idempotency boundary. `related_event_id` creates an auditable correction chain. Content has one deterministic item per `(event_id, channel, content_type)`. API keys are represented only by a prefix and an Argon2id hash.
 
-Feed ordering uses `content_items.published_at ASC, content_items.id ASC`; both values are encoded into an opaque cursor. Request logs exclude credentials and authorization headers.
+Feed ordering uses `content_items.publication_sequence ASC`, assigned by a trigger that locks the transactional `feed_publication_state` counter until commit. Published payloads and event-type routing snapshots are immutable. Signed cursors contain the feed epoch, decimal position, and filter scope. Request logs exclude credentials and authorization headers. See [feed publication](FEED_PUBLICATION.md) for rollout and restore requirements.

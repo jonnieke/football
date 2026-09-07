@@ -155,3 +155,20 @@ schema validation pass. Database integration and process recovery run in CI,
 not against application stores. See `SOURCE_REVIEWS.md` and `TESTING.md` for the
 decision policy, test boundaries, cleanup, and rollout requirements. No
 application database migration or operator review decision was executed here.
+
+## Stage 6: commit-ordered feed and cursor recovery
+
+- Database-triggered, transactionally locked publication positions prevent late
+  commits from falling behind a partner's cursor. Rollback releases the reservation.
+- Published content and filter identity are frozen; event-type routing is captured
+  at publication. Timestamps remain display metadata only.
+- Signed v2 cursors bind filters and feed epoch, preserve bigint precision, and
+  advance safely on empty polls. Old timestamp cursors explicitly require reset.
+- Added an audited operator epoch-reset command for database restore procedures.
+- Added real-database concurrency/rollback tests and cursor/API regression coverage.
+
+See [FEED_PUBLICATION.md](FEED_PUBLICATION.md) for the coordinated migration rollout,
+client replay contract, primary-database requirement, and mandatory restore reset.
+Local unit verification: 154 tests. No production migration or epoch reset has run.
+Historical-data upgrade rehearsal, correction/withdrawal workflows, retention, and
+broader transport failure injection remain outstanding.

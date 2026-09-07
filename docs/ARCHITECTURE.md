@@ -45,6 +45,6 @@ Dependencies flow inward: applications and workers depend on packages; football 
 
 Every fixture change produces an append-only `fixture_states` snapshot. Meaningful changes produce canonical ledger rows. A SHA-256 fingerprint over stable semantic fields and a database unique constraint provide durable idempotency; Redis only accelerates duplicate rejection. Reversals append `goal_cancelled` or `score_correction` events and may reference the superseded event.
 
-The platform uses UUIDv7: it is time-sortable, standardized, and UUID-compatible. Feed cursors use `(published_at, id)` rather than relying on ID ordering alone.
+The platform uses UUIDv7: it is time-sortable, standardized, and UUID-compatible. Feed cursors use a database-assigned, commit-ordered publication position, not timestamps or UUID ordering. See [feed publication](FEED_PUBLICATION.md).
 
 Synthetic fixtures will be supplied by a separate `FootballProvider` implementation in an isolated sandbox environment, preserving the same normalized domain and `/v1` schema without contaminating production data.

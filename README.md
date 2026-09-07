@@ -93,7 +93,7 @@ Endpoints:
 - `GET /v1/feed?after=&limit=&channel=&event_type=`
 - `GET /docs` for OpenAPI UI
 
-Every response carries `X-Request-ID`. Errors use a stable `error.code`, safe message, and request ID. Feed cursors are opaque, signed, stable across reconnects, and ordered by publication time plus content ID.
+Every response carries `X-Request-ID`. Errors use a stable `error.code`, safe message, and request ID. Feed cursors are opaque, signed, filter-bound, and ordered by database-assigned commit-ordered publication positions. Empty polls preserve a usable cursor; legacy cursors and restored histories require explicit recovery.
 
 ## Environment
 
@@ -104,6 +104,7 @@ See [.env.example](.env.example). Credentials are environment-only and must neve
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database model](docs/DATABASE_MODEL.md)
 - [API](docs/API.md)
+- [Feed publication and cursor recovery](docs/FEED_PUBLICATION.md)
 - [Event model](docs/EVENT_MODEL.md)
 - [Ingestion](docs/INGESTION.md)
 - [Content engine](docs/CONTENT_ENGINE.md)

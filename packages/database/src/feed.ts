@@ -1,5 +1,5 @@
-import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
-import { createCursor, parseCursor } from "@fcp/shared";
+import { AppError, createCursor, parseCursor } from "@fcp/shared";
+import type { PrismaClient } from "./generated/prisma/client.ts";
 
 export interface FeedQuery {
   after?: string;
@@ -16,62 +16,82 @@ export class FeedRepository {
 
   public async getFeed(
     query: FeedQuery,
-  ): Promise<{ items: unknown[]; nextCursor: string | null }> {
+  ): Promise<{ items: unknown[]; nextCursor: string }> {
+    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 500)
+      throw new AppError(
+        "INVALID_REQUEST",
+        "Feed limit must be between 1 and 500.",
+        400,
+      );
     const cursor =
       query.after === undefined
         ? undefined
         : parseCursor(query.after, this.cursorSecret);
-    const where: Prisma.ContentItemWhereInput = {
-      status: "published",
-      publishedAt: { not: null },
-      ...(query.channel === undefined ? {} : { channel: query.channel }),
-      ...(query.eventType === undefined
-        ? {}
-        : { event: { eventType: query.eventType } }),
-      ...(cursor === undefined
-        ? {}
-        : {
-            OR: [
-              { publishedAt: { gt: new Date(cursor.publishedAt) } },
-              {
-                publishedAt: new Date(cursor.publishedAt),
-                id: { gt: cursor.id },
-              },
-            ],
-          }),
+    const scope = {
+      channel: query.channel ?? null,
+      eventType: query.eventType ?? null,
     };
+    if (
+      cursor !== undefined &&
+      (cursor.channel !== scope.channel || cursor.eventType !== scope.eventType)
+    ) {
+      throw new AppError(
+        "CURSOR_SCOPE_MISMATCH",
+        "Keep the cursor's channel and event_type filters, or restart without after.",
+        400,
+      );
+    }
+    // Read the committed upper bound FIRST. The transactional counter prevents
+    // any as-yet-uncommitted publication at or below this position.
+    const state = await this.prisma.feedPublicationState.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    const after = cursor === undefined ? 0n : BigInt(cursor.sequence);
+    if (
+      cursor !== undefined &&
+      (cursor.epoch !== state.epoch || after > state.highWater)
+    ) {
+      throw new AppError(
+        "CURSOR_RESET_REQUIRED",
+        "The feed cursor no longer belongs to this publication history. Restart without after and deduplicate by content ID.",
+        409,
+      );
+    }
     const records = await this.prisma.contentItem.findMany({
-      where,
-      orderBy: [{ publishedAt: "asc" }, { id: "asc" }],
-      take: query.limit,
-      include: {
-        event: {
-          select: {
-            id: true,
-            eventType: true,
-            fixture: { select: { competitionId: true } },
-          },
-        },
+      where: {
+        status: "published",
+        publicationSequence: { gt: after, lte: state.highWater },
+        ...(query.channel === undefined ? {} : { channel: query.channel }),
+        ...(query.eventType === undefined
+          ? {}
+          : { eventType: query.eventType }),
       },
+      orderBy: { publicationSequence: "asc" },
+      take: query.limit,
     });
     const items = records.map((item) => ({
       id: item.id,
-      event_id: item.event.id,
+      event_id: item.eventId,
       channel: item.channel,
       content_type: item.contentType,
-      event_type: item.event.eventType,
+      event_type: item.eventType,
       priority: item.priority,
       text: { short: item.shortText, standard: item.standardText },
       published_at: item.publishedAt?.toISOString(),
+      publication_sequence: item.publicationSequence!.toString(),
     }));
-    const last = records.at(-1);
-    const nextCursor =
-      last?.publishedAt === null || last?.publishedAt === undefined
-        ? null
-        : createCursor(
-            { publishedAt: last.publishedAt.toISOString(), id: last.id },
-            this.cursorSecret,
-          );
-    return { items, nextCursor };
+    // A short/empty page scanned the entire bounded, filtered range. Advancing
+    // to its high-water mark avoids rescanning unrelated channels on every poll.
+    const position =
+      records.length < query.limit
+        ? state.highWater
+        : records.at(-1)!.publicationSequence!;
+    return {
+      items,
+      nextCursor: createCursor(
+        { epoch: state.epoch, sequence: position.toString(), ...scope },
+        this.cursorSecret,
+      ),
+    };
   }
 }
