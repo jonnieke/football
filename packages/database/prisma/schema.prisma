@@ -5,6 +5,31 @@ generator client {
   importFileExtension = "ts"
 }
 
+model AlertRecipient {
+  id String @id @db.Uuid
+  email String @unique @db.VarChar(254)
+  enabled Boolean @default(true)
+  warnings Boolean @default(true)
+  critical Boolean @default(true)
+  recovery Boolean @default(true)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("alert_recipients")
+}
+
+model AlertRecipientAudit {
+  id String @id @db.Uuid
+  recipientId String @map("recipient_id") @db.Uuid
+  actor String @db.VarChar(200)
+  action String
+  before Json?
+  after Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([recipientId, createdAt, id])
+  @@map("alert_recipient_audit")
+}
+
 model WorkOutbox {
   id            String   @id @db.Uuid
   kind          String

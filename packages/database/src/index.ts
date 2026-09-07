@@ -15,3 +15,4 @@ export type {
 export * from "./observations.js";
 export * from "./source-reviews.js";
 export * from "./monitoring.js";
+export * from "./alert-recipients.js";

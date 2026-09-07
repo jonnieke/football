@@ -217,3 +217,11 @@ distinct warning/critical/unknown exit codes support a future independent monito
 Unit boundary tests and isolated PostgreSQL collection tests cover the rules. See
 MONITORING.md for thresholds, permissions, performance limits and notification gaps.
 No production data, schema, environment settings, or alert destination were changed.
+
+## Stage 7d (foundation): audited alert recipients
+
+Added recipient CRUD/preferences, optimistic version checks, atomic audit history,
+an additive migration and trusted-operator CLI. Unit and isolated database tests
+cover validation, uniqueness, concurrent edits, removal and audit-failure rollback.
+See ALERT_RECIPIENTS.md. The admin settings page awaits administrator authentication;
+Resend delivery and scheduling are not implemented by this foundation.
