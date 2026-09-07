@@ -172,3 +172,19 @@ client replay contract, primary-database requirement, and mandatory restore rese
 Local unit verification: 154 tests. No production migration or epoch reset has run.
 Historical-data upgrade rehearsal, correction/withdrawal workflows, retention, and
 broader transport failure injection remain outstanding.
+
+## Stage 7a: authentication admission hardening
+
+- Added cross-instance IP/prefix attempt budgets before database lookup and hashing,
+  plus per-instance Argon2 concurrency protection. Existing client quotas remain.
+- Forwarded client IPs now require an explicit validated proxy-IP/CIDR allowlist.
+- Authentication fails closed on malformed/unavailable Redis counters. Both API
+  entry points use bounded Redis clients; queue consumers remain unchanged.
+- Anonymous failures no longer cause database request-log writes; oversized keys
+  and lookalike documentation paths are covered by regression checks.
+- Added configuration and deployment tradeoffs to SECURITY.md and VERCEL.md.
+
+This is one stage-7 slice, not a declaration of production readiness. Edge/WAF
+controls, dependency security upgrades, database timeouts, external telemetry,
+backup/restore rehearsal, and broader failure-injection coverage remain outstanding.
+No live environment settings, migrations, credentials, or firewall rules were changed.

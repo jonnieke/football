@@ -23,6 +23,7 @@ export async function createApiKeyMaterial(): Promise<CreatedApiKey> {
 }
 
 export function apiKeyPrefix(plaintext: string): string | null {
+  if (plaintext.length > 512) return null;
   return keyPattern.exec(plaintext)?.[1] ?? null;
 }
 

@@ -67,6 +67,43 @@ describeIntegration(
       }
     }, 30_000);
 
+    it("atomically throttles concurrent anonymous requests without database log writes", async () => {
+      if (!resources) throw new Error("Missing isolated resources");
+      const limited = await buildApp({
+        config: { ...config, API_AUTH_IP_LIMIT: 3 },
+        prisma,
+        redis: resources.redis,
+        logger: createLogger("silent"),
+      });
+      try {
+        const responses = await Promise.all(
+          Array.from({ length: 8 }, () =>
+            limited.inject({
+              method: "GET",
+              url: "/v1/feed",
+              remoteAddress: "198.51.100.77",
+            }),
+          ),
+        );
+        expect(
+          responses.filter((response) => response.statusCode === 401),
+        ).toHaveLength(3);
+        expect(
+          responses.filter((response) => response.statusCode === 429),
+        ).toHaveLength(5);
+        const requestIds = responses.map((response) =>
+          String(response.headers["x-request-id"]),
+        );
+        expect(
+          await prisma.apiRequestLog.count({
+            where: { requestId: { in: requestIds } },
+          }),
+        ).toBe(0);
+      } finally {
+        await limited.close();
+      }
+    });
+
     it("persists, generates, paginates, and resumes without duplicates", async () => {
       const base: NormalizedFixture = {
         id: "provider-fixture-9001",

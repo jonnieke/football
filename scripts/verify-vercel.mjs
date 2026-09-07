@@ -95,7 +95,7 @@ try {
     assert.equal(await verifyApiKeyHash(key.hash, key.plaintext), true);
     await assert.rejects(handler({}, {}), /Invalid environment configuration/);
     const config = loadConfig({ NODE_ENV:'test', DATABASE_URL:'postgresql://unused:unused@127.0.0.1:1/unused', REDIS_URL:'redis://127.0.0.1:1', API_FOOTBALL_BASE_URL:'https://example.invalid', API_FOOTBALL_KEY:'not-used', CURSOR_SIGNING_SECRET:'isolated-artifact-test-secret-long-enough' });
-    const app = await buildApp({ config, prisma:{}, redis:{}, logger:createLogger('silent') });
+    const app = await buildApp({ config, prisma:{}, redis:{ eval:async () => [1,60] }, logger:createLogger('silent') });
     const response = await app.inject({ method:'GET', url:'/docs/json' });
     assert.equal(response.statusCode, 200);
     assert.match(response.json().openapi, /^3[.]/);

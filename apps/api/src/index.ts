@@ -1,11 +1,12 @@
 import { getPrisma } from "@fcp/database";
-import { createLogger, createRedis, loadConfig } from "@fcp/shared";
+import { createLogger, createProducerRedis, loadConfig } from "@fcp/shared";
 import { buildApp } from "./app.js";
 
 const config = loadConfig();
 const logger = createLogger(config.LOG_LEVEL);
 const prisma = getPrisma(config.DATABASE_URL);
-const redis = createRedis(config.REDIS_URL);
+const redis = createProducerRedis(config.REDIS_URL);
+redis.on("error", () => logger.warn("API Redis connection error"));
 await redis.connect();
 const app = await buildApp({ config, prisma, redis, logger });
 

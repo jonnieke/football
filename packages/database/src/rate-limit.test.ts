@@ -11,6 +11,17 @@ class FakeRateLimitRedis implements RateLimitRedis {
 }
 
 describe("Redis-backed client rate limiting", () => {
+  it.each([
+    [NaN, 60],
+    [1, NaN],
+    [1, null],
+    [-1, 60],
+    [1, 61],
+    [1.5, 60],
+  ])("rejects malformed Redis counters %j", async (count, ttl) => {
+    const redis = { eval: () => Promise.resolve([count, ttl]) };
+    await expect(consumeRateLimit(redis, "client", 2)).rejects.toThrow();
+  });
   it("allows through the limit and rejects subsequent requests", async () => {
     const redis = new FakeRateLimitRedis();
     await expect(consumeRateLimit(redis, "client", 2)).resolves.toMatchObject({

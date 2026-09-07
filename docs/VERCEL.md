@@ -32,6 +32,12 @@ failure clears the cached promise so subsequent requests can retry. Redis operat
 have bounded command timeouts. All URL paths route to the same API; this does not
 deploy a frontend. Use `/docs` rather than `/` to inspect the API.
 
+Authentication limits and proxy trust are documented in [SECURITY.md](SECURITY.md).
+Forwarded headers are no longer trusted automatically. Until ingress trust is
+verified, the 600-attempt/minute IP budget may be shared by clients behind the same
+Vercel proxy. Configure budgets for legitimate traffic; do not blindly trust all
+forwarded headers to get separate client buckets.
+
 ## Runtime prerequisites and rollout
 
 Configure `DATABASE_URL`, `REDIS_URL`, `CURSOR_SIGNING_SECRET`, `API_FOOTBALL_BASE_URL` and `API_FOOTBALL_KEY`

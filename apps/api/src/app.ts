@@ -4,7 +4,6 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import {
   apiKeyPrefix,
-  consumeRateLimit,
   FeedRepository,
   type RateLimitRedis,
   verifyApiKeyHash,
@@ -15,6 +14,7 @@ import Fastify, { type FastifyInstance, type FastifyBaseLogger } from "fastify";
 import { v7 as uuidv7 } from "uuid";
 import { ZodError, z } from "zod";
 import "./types.js";
+import { checkedRateLimit, verificationGate } from "./security.js";
 
 interface RedisApi extends RateLimitRedis {
   ping(): Promise<string>;
@@ -61,11 +61,15 @@ export async function buildApp(
     loggerInstance: logger,
     bodyLimit: 64 * 1024,
     genReqId: () => `req_${uuidv7()}`,
-    trustProxy: true,
+    trustProxy:
+      config.API_TRUSTED_PROXIES.length === 0
+        ? false
+        : config.API_TRUSTED_PROXIES,
     disableRequestLogging: true,
   });
   const metrics = new Metrics();
   const feed = new FeedRepository(prisma, config.CURSOR_SIGNING_SECRET);
+  const verify = verificationGate(config.API_AUTH_CONCURRENCY);
 
   await app.register(helmet, { global: true });
   await app.register(swagger, {
@@ -94,7 +98,23 @@ export async function buildApp(
   app.addHook("onRequest", async (request, reply) => {
     request.startedAtMs = Date.now();
     void reply.header("X-Request-ID", request.id);
-    if (request.url === "/v1/health" || request.url.startsWith("/docs")) return;
+    const path = request.url.split("?")[0];
+    if (path === "/v1/health" || path === "/docs" || path?.startsWith("/docs/"))
+      return;
+    const ip = createHash("sha256").update(request.ip).digest("hex");
+    const attempts = await checkedRateLimit(
+      redis,
+      redisKey(`auth:ip:${ip}`, config.QUEUE_PREFIX),
+      config.API_AUTH_IP_LIMIT,
+    );
+    if (!attempts.allowed) {
+      void reply.header("Retry-After", attempts.retryAfterSeconds);
+      throw new AppError(
+        "AUTH_RATE_LIMIT_EXCEEDED",
+        "Too many authentication attempts.",
+        429,
+      );
+    }
     const token = bearerToken(request.headers.authorization);
     const prefix = apiKeyPrefix(token);
     if (prefix === null)
@@ -103,6 +123,19 @@ export async function buildApp(
         "A valid bearer API key is required.",
         401,
       );
+    const prefixAttempts = await checkedRateLimit(
+      redis,
+      redisKey(`auth:prefix:${prefix}`, config.QUEUE_PREFIX),
+      config.API_AUTH_PREFIX_LIMIT,
+    );
+    if (!prefixAttempts.allowed) {
+      void reply.header("Retry-After", prefixAttempts.retryAfterSeconds);
+      throw new AppError(
+        "AUTH_RATE_LIMIT_EXCEEDED",
+        "Too many authentication attempts.",
+        429,
+      );
+    }
     const client = await prisma.apiClient.findUnique({
       where: { keyPrefix: prefix },
     });
@@ -117,7 +150,7 @@ export async function buildApp(
         401,
       );
     }
-    if (!(await verifyApiKeyHash(client.keyHash, token))) {
+    if (!(await verify(() => verifyApiKeyHash(client.keyHash, token)))) {
       throw new AppError(
         "UNAUTHORIZED",
         "A valid bearer API key is required.",
@@ -125,7 +158,11 @@ export async function buildApp(
       );
     }
     request.apiClient = client;
-    const rate = await consumeRateLimit(redis, client.id, client.rateLimit);
+    const rate = await checkedRateLimit(
+      redis,
+      redisKey(client.id, config.QUEUE_PREFIX),
+      client.rateLimit,
+    );
     void reply.header("X-RateLimit-Limit", client.rateLimit);
     void reply.header("X-RateLimit-Remaining", rate.remaining);
     if (!rate.allowed) {
@@ -142,6 +179,8 @@ export async function buildApp(
     const durationMs = Date.now() - request.startedAtMs;
     metrics.observe("api_request_latency_ms", durationMs);
     if (reply.statusCode >= 400) metrics.increment("api_errors");
+    // Do not turn anonymous auth floods into database writes.
+    if (request.apiClient === null) return;
     const ipHash = createHash("sha256").update(request.ip).digest("hex");
     await prisma.apiRequestLog
       .create({
@@ -188,6 +227,7 @@ export async function buildApp(
         { err: error, request_id: request.id },
         "request failed",
       );
+    if (statusCode === 503) void reply.header("Retry-After", 1);
     void reply
       .status(statusCode)
       .send({ error: { code, message, request_id: request.id } });

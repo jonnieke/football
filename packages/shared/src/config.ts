@@ -1,4 +1,18 @@
 import { z } from "zod";
+import { isIP } from "node:net";
+
+function validProxy(value: string): boolean {
+  const [address, mask, extra] = value.split("/");
+  const version = isIP(address ?? "");
+  return (
+    version !== 0 &&
+    extra === undefined &&
+    (mask === undefined ||
+      (/^\d+$/.test(mask) &&
+        Number(mask) > 0 &&
+        Number(mask) <= (version === 4 ? 32 : 128)))
+  );
+}
 
 const environmentSchema = z.object({
   NODE_ENV: z
@@ -10,6 +24,27 @@ const environmentSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   DATABASE_URL: z.url(),
+  API_TRUSTED_PROXIES: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    )
+    .refine(
+      (values) => values.every(validProxy),
+      "Expected IP addresses or CIDRs, never trust-all or hop counts",
+    ),
+  API_AUTH_IP_LIMIT: z.coerce.number().int().min(1).max(100_000).default(600),
+  API_AUTH_PREFIX_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100_000)
+    .default(600),
+  API_AUTH_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
   OUTBOX_POLL_INTERVAL_MS: z.coerce
     .number()
     .int()
