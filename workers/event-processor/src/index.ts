@@ -7,6 +7,7 @@ import {
 import {
   createLogger,
   createRedis,
+  redisKey,
   loadConfig,
   Metrics,
   QUEUE_NAMES,
@@ -33,13 +34,13 @@ const worker = new Worker<FixtureChangeJob>(
     metrics.increment("events_detected", processed.created);
     metrics.increment("duplicates_ignored", processed.duplicates);
     await redis.set(
-      "health:worker:event-processor",
+      redisKey("health:worker:event-processor", config.QUEUE_PREFIX),
       new Date().toISOString(),
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS,
     );
   },
-  { connection: redis, concurrency: 10 },
+  { connection: redis, concurrency: 10, prefix: config.QUEUE_PREFIX },
 );
 
 worker.on("failed", (job, error) => {

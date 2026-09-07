@@ -13,3 +13,4 @@ export type {
   PrismaClient,
 } from "./generated/prisma/client.ts";
 export * from "./observations.js";
+export * from "./source-reviews.js";

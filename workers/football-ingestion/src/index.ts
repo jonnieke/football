@@ -1,7 +1,12 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { ApiFootballProvider } from "@fcp/football-provider";
 import { getPrisma, persistNormalizedFixture } from "@fcp/database";
-import { createLogger, createProducerRedis, loadConfig } from "@fcp/shared";
+import {
+  createLogger,
+  createProducerRedis,
+  loadConfig,
+  redisKey,
+} from "@fcp/shared";
 import { v7 as uuidv7 } from "uuid";
 import { collectFixtures } from "./polling.js";
 
@@ -20,7 +25,7 @@ const provider = new ApiFootballProvider(
   },
   logger,
 );
-const lockKey = "lock:football-ingestion:live";
+const lockKey = redisKey("lock:football-ingestion:live", config.QUEUE_PREFIX);
 const lockMs = 60_000;
 const renewScript =
   "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end";
@@ -122,13 +127,13 @@ async function poll(): Promise<void> {
       },
     });
     await redis.set(
-      "health:worker:football-ingestion",
+      redisKey("health:worker:football-ingestion", config.QUEUE_PREFIX),
       new Date().toISOString(),
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS,
     );
     await redis.set(
-      "health:provider:api-football",
+      redisKey("health:provider:api-football", config.QUEUE_PREFIX),
       "healthy",
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS * 2,
@@ -152,7 +157,7 @@ async function poll(): Promise<void> {
         },
       });
     await redis.set(
-      "health:provider:api-football",
+      redisKey("health:provider:api-football", config.QUEUE_PREFIX),
       "unhealthy",
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS * 2,

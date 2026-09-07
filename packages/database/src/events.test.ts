@@ -10,6 +10,8 @@ const draft = {
 };
 function harness() {
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    sourceEventReview: { findUnique: vi.fn().mockResolvedValue(null) },
     footballEvent: {
       findUnique: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
@@ -26,6 +28,18 @@ function harness() {
   return { tx, transaction, prisma };
 }
 describe("atomic event and content handoff", () => {
+  it.each(["pending", "dismissed"])(
+    "does not bypass a %s review on direct or checkpointed persistence",
+    async (status) => {
+      const { prisma, tx } = harness();
+      tx.sourceEventReview.findUnique.mockResolvedValue({ id, status });
+      await expect(
+        createCanonicalEvent(prisma, { ...draft, sourceEventId: "source-key" }),
+      ).rejects.toThrow("held by an operator review");
+      expect(tx.footballEvent.create).not.toHaveBeenCalled();
+      expect(tx.workOutbox.upsert).not.toHaveBeenCalled();
+    },
+  );
   it("recognizes legacy positional IDs without rewriting their history", async () => {
     const { tx, prisma } = harness();
     tx.footballEvent.findMany.mockResolvedValue([

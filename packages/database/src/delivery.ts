@@ -3,7 +3,7 @@ import { generateContent } from "@fcp/content-core";
 import type { FixtureChangeJob, ContentGenerationJob } from "@fcp/shared";
 import { v7 as uuidv7, validate as isUuid } from "uuid";
 import type { PrismaClient } from "./generated/prisma/client.ts";
-import { createCanonicalEvent } from "./events.js";
+import { createCanonicalEvent, SourceEventHeldError } from "./events.js";
 import {
   checkpointEvents,
   completeWork,
@@ -60,13 +60,23 @@ export async function processFixtureDelivery(
       work.preparedData === null
         ? await checkpointEvents(prisma, work.id, await prepare(payload))
         : preparedEventsSchema.parse(work.preparedData);
-    const result = { created: 0, duplicates: 0 };
+    const result: { created: number; duplicates: number; held?: number } = {
+      created: 0,
+      duplicates: 0,
+    };
     for (const draft of drafts) {
       if (draft.fixtureId !== payload.fixtureId)
         throw new Error("Prepared event belongs to another fixture");
-      const event = await createCanonicalEvent(prisma, draft);
-      if (event.created) result.created += 1;
-      else result.duplicates += 1;
+      try {
+        const event = await createCanonicalEvent(prisma, draft);
+        if (event.created) result.created += 1;
+        else result.duplicates += 1;
+      } catch (error) {
+        // A review created after draft preparation must also gate replay.
+        // Its durable evidence and operator workflow now own this held event.
+        if (!(error instanceof SourceEventHeldError)) throw error;
+        result.held = (result.held ?? 0) + 1;
+      }
     }
     await completeWork(prisma, work.id);
     return result;

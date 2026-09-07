@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
 import {
   compareFixtureStates,
+  assessSourceReviews,
   type FixtureState,
   type NormalizedFixture,
   type NormalizedSourceEvent,
 } from "@fcp/football-core";
 import { v7 as uuidv7 } from "uuid";
 import { ensureFixtureWork } from "./outbox.js";
+import { parseSourceEvents } from "./observations.js";
 
 export interface PersistFixtureResult {
   fixtureId: string;
@@ -54,6 +56,8 @@ export async function persistNormalizedFixture(
   input: NormalizedFixture,
   sourceEvents?: readonly NormalizedSourceEvent[],
 ): Promise<PersistFixtureResult> {
+  if (sourceEvents !== undefined)
+    sourceEvents = parseSourceEvents(sourceEvents);
   if (
     sourceEvents?.some(
       (event) =>
@@ -178,6 +182,7 @@ export async function persistNormalizedFixture(
         awayScore: input.score.away,
         lastSourceUpdateAt: input.sourceUpdatedAt ?? null,
         lastPolledAt: input.receivedAt,
+        ...(sourceEvents === undefined ? {} : { sourceReviewVersion: 1 }),
       },
       update: {
         competitionId: competition.id,
@@ -190,10 +195,17 @@ export async function persistNormalizedFixture(
         awayScore: input.score.away,
         lastSourceUpdateAt: input.sourceUpdatedAt ?? null,
         lastPolledAt: input.receivedAt,
+        ...(sourceEvents === undefined ? {} : { sourceReviewVersion: 1 }),
       },
     });
     const hash = stateHash(currentState, sourceEvents);
-    if (previousState !== undefined && previousState.rawHash === hash) {
+    const policyChanged =
+      sourceEvents !== undefined && existing?.sourceReviewVersion !== 1;
+    if (
+      previousState !== undefined &&
+      previousState.rawHash === hash &&
+      !policyChanged
+    ) {
       return {
         fixtureId: fixture.id,
         previousStateId: previousState.id,
@@ -224,7 +236,65 @@ export async function persistNormalizedFixture(
       sourceEvents !== undefined &&
       canonicalEvents(previousState?.sourceEvents) !==
         canonicalEvents(sourceEvents);
-    const changed = comparison.changed || eventsChanged;
+    if ((eventsChanged || policyChanged) && sourceEvents !== undefined) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`source-review:${fixture.id}`}, 0))`;
+      const historical = await tx.fixtureState.findMany({
+        where: { fixtureId: fixture.id, id: { not: snapshot.id } },
+        orderBy: [{ capturedAt: "asc" }, { id: "asc" }],
+        select: { id: true, sourceEvents: true },
+      });
+      const history: NormalizedSourceEvent[] = [];
+      const reviews: Array<{
+        stateId: string;
+        review: ReturnType<typeof assessSourceReviews>[number];
+      }> = [];
+      for (const record of historical) {
+        if (record.sourceEvents === null) continue;
+        const observed = parseSourceEvents(record.sourceEvents);
+        if (policyChanged)
+          reviews.push(
+            ...assessSourceReviews(history, observed).map((review) => ({
+              stateId: record.id,
+              review,
+            })),
+          );
+        history.push(...observed);
+      }
+      reviews.push(
+        ...assessSourceReviews(
+          history,
+          sourceEvents,
+          previousState !== undefined && previousState.sourceEvents === null,
+        ).map((review) => ({ stateId: snapshot.id, review })),
+      );
+      for (const { review, stateId } of reviews) {
+        const json = (value: unknown) =>
+          JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+        await tx.sourceEventReview.upsert({
+          where: {
+            fixtureId_sourceEventId: {
+              fixtureId: fixture.id,
+              sourceEventId: review.event.sourceEventId!,
+            },
+          },
+          create: {
+            id: uuidv7(),
+            fixtureId: fixture.id,
+            fixtureStateId: stateId,
+            sourceEventId: review.event.sourceEventId!,
+            reason: review.reason,
+            sourceEvent: json(review.event),
+            evidence: json({
+              policyVersion: 1,
+              candidates: review.candidates,
+              occurrences: review.occurrences,
+            }),
+          },
+          update: {},
+        });
+      }
+    }
+    const changed = comparison.changed || eventsChanged || policyChanged;
     if (
       changed &&
       (previousState !== undefined || sourceEvents !== undefined)

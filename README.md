@@ -15,6 +15,7 @@ Stage 5 also captures source events in fixture snapshots. Read the
 running workers: drain legacy work and apply the observation migration first.
 The [event contract](docs/EVENT_MODEL.md) now includes `score_updated` and
 does not invent event-time scores for historical source events.
+Ambiguous source revisions are held for [operator review](docs/SOURCE_REVIEWS.md).
 
 ```text
 API-Football -> ingestion -> fixture snapshots -> event processor

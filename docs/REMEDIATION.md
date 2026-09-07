@@ -7,7 +7,7 @@ mean the platform is production-ready.
 2. Isolated integration-test resources (implemented; GitHub CI real-store run passed).
 3. Provider-to-internal player/team identity mapping (implemented).
 4. Durable database-to-queue delivery and replay/reconciliation (implemented; GitHub CI database rollback scenarios passed; real worker crash testing pending).
-5. Event observations, reorder-stable identity, and lifecycle reconciliation (first pass implemented; source revision ambiguity remains).
+5. Event observations, lifecycle reconciliation, and explicit review of ambiguous source identities (implemented; linked editorial corrections remain separate work).
 6. Commit-ordered feed publication and cursor recovery.
 7. Failure-injection acceptance tests, security, deployment, and monitoring.
 
@@ -134,3 +134,24 @@ runtime smoke checks pass. [GitHub CI for implementation commit cc1003f](https:/
 passed all 122 tests across 19 files, including all three isolated integration
 scenarios, and its build/runtime checks. The observation migration was exercised
 only in isolated CI schemas; no application database migration was executed.
+
+## Stage 5 follow-up: ambiguity reviews and process recovery
+
+- Added durable source-event reviews for duplicate keys, possible replacements,
+  and legacy baselines. The first post-upgrade poll scans retained history.
+- Pending/dismissed keys are gated during observation preparation and again
+  during canonical persistence, including already checkpointed work.
+- Operator publish-one/dismiss decisions retain immutable evidence, operator,
+  reason, and timestamp. Publication and its content handoff share the decision
+  transaction; conflicting final decisions cannot overwrite each other.
+- Added schema-aware standalone database clients and configurable queue/health
+  namespaces while preserving current production defaults.
+- Added a separate compiled-worker test: actual dispatcher/event/content Node
+  processes, real BullMQ/Redis, PostgreSQL publication lock, forced content-worker
+  death, replacement, and duplicate/loss checks. CI runs it after building.
+
+Local verification: 141 unit tests pass across 19 files; lint, typecheck and
+schema validation pass. Database integration and process recovery run in CI,
+not against application stores. See `SOURCE_REVIEWS.md` and `TESTING.md` for the
+decision policy, test boundaries, cleanup, and rollout requirements. No
+application database migration or operator review decision was executed here.

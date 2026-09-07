@@ -22,6 +22,31 @@ model WorkOutbox {
   @@map("work_outbox")
 }
 
+model SourceEventReview {
+  id String @id @db.Uuid
+  fixtureId String @map("fixture_id") @db.Uuid
+  fixtureStateId String @map("fixture_state_id") @db.Uuid
+  sourceEventId String @map("source_event_id")
+  reason String
+  sourceEvent Json @map("source_event")
+  evidence Json
+  status String @default("pending")
+  decidedBy String? @map("decided_by")
+  decisionReason String? @map("decision_reason")
+  decidedAt DateTime? @map("decided_at")
+  eventId String? @map("event_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  fixture Fixture @relation(fields: [fixtureId], references: [id])
+  fixtureState FixtureState @relation(fields: [fixtureStateId], references: [id])
+  event FootballEvent? @relation(fields: [eventId], references: [id])
+
+  @@unique([fixtureId, sourceEventId])
+  @@index([status, createdAt, id])
+  @@index([fixtureStateId])
+  @@index([eventId])
+  @@map("source_event_reviews")
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -91,6 +116,7 @@ model Fixture {
   awayScore          Int      @default(0) @map("away_score")
   lastSourceUpdateAt DateTime? @map("last_source_update_at")
   lastPolledAt       DateTime? @map("last_polled_at")
+  sourceReviewVersion Int @default(0) @map("source_review_version")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
   competition        Competition @relation(fields: [competitionId], references: [id])
@@ -98,6 +124,7 @@ model Fixture {
   awayTeam           Team @relation("AwayTeam", fields: [awayTeamId], references: [id])
   states             FixtureState[]
   events             FootballEvent[]
+  sourceReviews      SourceEventReview[]
 
   @@unique([source, sourceFixtureId])
   @@index([status, kickoffAt])
@@ -116,6 +143,7 @@ model FixtureState {
   sourceEvents Json? @map("source_events")
   capturedAt DateTime @default(now()) @map("captured_at")
   fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  sourceReviews SourceEventReview[]
 
   @@index([fixtureId, capturedAt])
   @@map("fixture_states")
@@ -145,6 +173,7 @@ model FootballEvent {
   relatedEvent     FootballEvent? @relation("EventCorrections", fields: [relatedEventId], references: [id])
   corrections      FootballEvent[] @relation("EventCorrections")
   contentItems     ContentItem[]
+  sourceReviews    SourceEventReview[]
 
   @@index([fixtureId, detectedAt])
   @@index([eventType, detectedAt])

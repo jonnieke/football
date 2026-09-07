@@ -37,7 +37,7 @@ migrations within the test database. No pre-test `pnpm db:migrate` is required.
 - Normal teardown drops only a schema this run successfully created and
   deletes only the exact Redis keys touched through its wrapper.
 - Partial setup also attempts cleanup and reports cleanup failures.
-- No `FLUSHDB`, wildcard deletion, or table-wide data reset is used.
+- Repository tests do not use `FLUSHDB`, wildcard deletion, or table-wide data resets.
 - Database/Redis connection waits and migration execution are bounded.
 
 This protects ordinary runs and concurrent suites; it is not a sandbox for
@@ -52,5 +52,29 @@ feed requests, outbox transaction rollback/recovery, and immutable fixture
 observations (event-only changes, reordered replay, final-state reconciliation,
 and concurrent stale-writer protection). The outbox suite
 simulates queue transport while using real database transactions. These are
-**not yet** independent queue-worker end-to-end tests; actual Redis/worker
-failure-injection verification remains a later acceptance stage.
+not independent queue-worker end-to-end tests. Review integration also verifies
+durable holds, concurrent decisions, and rollback when approval handoff fails.
+
+## Compiled worker crash test
+
+After `pnpm build`, run `pnpm test:workers` with the same explicit test URLs.
+CI runs this separately after building; ordinary unit/integration runs skip it
+unless `RUN_WORKER_TESTS=true` is explicitly set.
+
+The test starts the actual compiled dispatcher, event processor, and content
+generator in separate Node processes. It waits for PostgreSQL to report the
+content worker blocked on an isolated publication-table lock, kills that exact
+test-owned process, and starts a replacement. Real BullMQ lock expiry/stalled
+job handling must recover all publications without duplicate content rows.
+Allow up to three minutes; the test uses production lock/retry timing.
+
+Each child gets the newly created schema via its database URL and a random
+`QUEUE_PREFIX`. Production's default `bull` prefix and existing heartbeat keys
+remain unchanged. Cleanup stops only test-owned children, calls BullMQ cleanup
+only for the two verified test-prefixed queues, deletes their exact heartbeat
+keys, then drops the owned schema. It never flushes Redis or resets a shared
+queue. A killed test runner may leave its isolated resources behind.
+
+This proves one crash-before-commit scenario, not every transport failure. Redis
+server loss, crash-after-commit/before-ack, ingestion lease expiry, provider
+outages, and full provider-to-partner acceptance remain separate scenarios.

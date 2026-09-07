@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as EventModule from "./events.js";
 const mocks = vi.hoisted(() => ({ canonical: vi.fn(), generate: vi.fn() }));
-vi.mock("./events.js", () => ({ createCanonicalEvent: mocks.canonical }));
+vi.mock("./events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof EventModule>()),
+  createCanonicalEvent: mocks.canonical,
+}));
 vi.mock("@fcp/content-core", () => ({ generateContent: mocks.generate }));
 import { processContentDelivery, processFixtureDelivery } from "./delivery.js";
+import { SourceEventHeldError } from "./events.js";
 
 const id = "01994d90-0000-7000-8000-000000000001";
 const prev = "01994d90-0000-7000-8000-000000000002";
@@ -71,6 +76,22 @@ beforeEach(() => {
 });
 
 describe("fixture delivery checkpoint recovery", () => {
+  it("holds a checkpointed event when a later review gates it", async () => {
+    const { prisma, workOutbox } = harness();
+    mocks.canonical.mockRejectedValueOnce(new SourceEventHeldError(id));
+    expect(await processFixtureDelivery(prisma, job, vi.fn())).toEqual({
+      created: 0,
+      duplicates: 0,
+      held: 1,
+    });
+    expect(workOutbox.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          completedAt: expect.any(Date) as unknown,
+        }) as unknown,
+      }),
+    );
+  });
   it("reuses persisted drafts without fetching upstream again", async () => {
     const { prisma, workOutbox } = harness();
     const prepare = vi.fn();

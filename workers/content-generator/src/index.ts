@@ -3,6 +3,7 @@ import { getPrisma, processContentDelivery } from "@fcp/database";
 import {
   createLogger,
   createRedis,
+  redisKey,
   loadConfig,
   Metrics,
   QUEUE_NAMES,
@@ -34,13 +35,13 @@ const worker = new Worker<ContentGenerationJob>(
       );
     }
     await redis.set(
-      "health:worker:content-generator",
+      redisKey("health:worker:content-generator", config.QUEUE_PREFIX),
       new Date().toISOString(),
       "EX",
       config.WORKER_HEARTBEAT_TTL_SECONDS,
     );
   },
-  { connection: redis, concurrency: 10 },
+  { connection: redis, concurrency: 10, prefix: config.QUEUE_PREFIX },
 );
 
 worker.on("failed", (job, error) => {

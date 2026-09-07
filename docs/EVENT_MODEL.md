@@ -24,11 +24,12 @@ canonical fingerprint uses only fixture, type, and source key. Reordering and
 name updates therefore cannot republish an event. Exact legacy positional IDs
 are recognized without rewriting existing ledger rows.
 
-Limitations: corrections to minute/team/player/type can change a semantic key;
-two indistinguishable same-player/same-minute events collapse to one identity.
-No confident automatic revision matching exists yet. Legacy state-generated
-goals cannot safely be matched to subsequently supplied player events. Drain
-legacy work before rollout; review historical replay separately.
+Corrections to identity fields and indistinguishable duplicate occurrences now
+have a conservative [source-review workflow](SOURCE_REVIEWS.md). Suspected
+replacements and duplicate keys are held for an explicit operator decision;
+they are never automatically merged. Legacy state-generated goals still cannot
+be safely linked to subsequently supplied player events. Drain legacy work
+before rollout; review historical replay separately.
 
 The ledger remains append-oriented. Explicit cancellations and scoreboard
 corrections do not guess a related goal from recency. Removal from an upstream

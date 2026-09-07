@@ -4,6 +4,7 @@ import {
   createLogger,
   createProducerRedis,
   createQueues,
+  redisKey,
   loadConfig,
 } from "@fcp/shared";
 
@@ -16,7 +17,7 @@ const redis = createProducerRedis(config.REDIS_URL);
 redis.on("error", (error) =>
   logger.warn({ err: error }, "outbox Redis connection error"),
 );
-const queues = createQueues(redis);
+const queues = createQueues(redis, config.QUEUE_PREFIX);
 for (const queue of [queues.fixtureChanges, queues.contentGeneration]) {
   queue.on("error", (error) =>
     logger.warn({ err: error }, "outbox queue connection error"),
@@ -89,7 +90,7 @@ try {
         logger.info(result, "outbox dispatch batch");
       await bounded(
         redis.set(
-          "health:worker:outbox-dispatcher",
+          redisKey("health:worker:outbox-dispatcher", config.QUEUE_PREFIX),
           new Date().toISOString(),
           "EX",
           config.WORKER_HEARTBEAT_TTL_SECONDS,

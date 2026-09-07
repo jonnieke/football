@@ -18,6 +18,10 @@ const environmentSchema = z.object({
     .default(1000),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
   REDIS_URL: z.url(),
+  QUEUE_PREFIX: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]{1,80}$/)
+    .default("bull"),
   API_FOOTBALL_BASE_URL: z.url(),
   API_FOOTBALL_KEY: z.string().min(1),
   API_FOOTBALL_TIMEOUT_MS: z.coerce

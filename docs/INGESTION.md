@@ -39,7 +39,8 @@ latency guarantee: large batches and retries increase cycle duration.
 
 1. Stop old ingestion; let old event/content workers drain pending work.
 2. Stop remaining workers. Back up the intended database.
-3. Apply migrations, including `20260908000000_fixture_observations`, and build.
+3. Apply migrations, including `20260908000000_fixture_observations` and
+   `20260909000000_source_event_reviews`, and build.
 4. Restart all workers from the same version; verify configured competitions,
    pending outbox work, polling failures, and provider quota.
 
@@ -52,7 +53,7 @@ Never manufacture or overwrite historical observation data to clear a backlog.
 
 - Provider quota budgeting, per-fixture failure isolation, coverage-aware calls,
   and a slower dedicated cadence for terminal/postponed fixtures.
-- Source revisions that change identity fields, ambiguous duplicate occurrences,
-  and reliable links from cancellations to the exact original event.
-- Independently running worker/Redis crash and lease-expiry acceptance tests.
+- Linked editorial corrections/withdrawals and reliable cancellation targets.
+  Ambiguous keys now use [operator reviews](SOURCE_REVIEWS.md).
+- Broader failure injection beyond the new independent content-worker crash test.
 - Feed publication ordering, retention, operational SLOs, and deployment hardening.

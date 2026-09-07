@@ -10,7 +10,7 @@ import {
   verifyApiKeyHash,
 } from "@fcp/database";
 import type { PrismaClient } from "@fcp/database";
-import { AppError, type AppConfig, Metrics } from "@fcp/shared";
+import { AppError, type AppConfig, Metrics, redisKey } from "@fcp/shared";
 import Fastify, { type FastifyInstance, type FastifyBaseLogger } from "fastify";
 import { v7 as uuidv7 } from "uuid";
 import { ZodError, z } from "zod";
@@ -203,9 +203,17 @@ export async function buildApp(
           .ping()
           .then(() => "healthy" as const)
           .catch(() => "unhealthy" as const),
-        redis.get("health:provider:api-football").catch(() => null),
-        redis.get("health:worker:football-ingestion").catch(() => null),
-        redis.get("health:worker:outbox-dispatcher").catch(() => null),
+        redis
+          .get(redisKey("health:provider:api-football", config.QUEUE_PREFIX))
+          .catch(() => null),
+        redis
+          .get(
+            redisKey("health:worker:football-ingestion", config.QUEUE_PREFIX),
+          )
+          .catch(() => null),
+        redis
+          .get(redisKey("health:worker:outbox-dispatcher", config.QUEUE_PREFIX))
+          .catch(() => null),
       ]);
     const services = {
       database,

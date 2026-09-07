@@ -10,7 +10,7 @@ import type { FixtureChangeJob } from "@fcp/shared";
 import type { PrismaClient } from "./generated/prisma/client.ts";
 import { resolveSourceEventIdentities } from "./event-identities.js";
 
-const sourceSchema = z.array(
+export const sourceSchema = z.array(
   z.object({
     source: z.enum(["api-football", "synthetic"]),
     sourceFixtureId: z.string(),
@@ -23,6 +23,17 @@ const sourceSchema = z.array(
     playerName: z.string().optional(),
   }),
 );
+
+export function parseSourceEvents(value: unknown): NormalizedSourceEvent[] {
+  return sourceSchema
+    .parse(value)
+    .map(
+      (source) =>
+        Object.fromEntries(
+          Object.entries(source).filter(([, value]) => value !== undefined),
+        ) as unknown as NormalizedSourceEvent,
+    );
+}
 
 const state = (record: {
   status: string;
@@ -58,9 +69,15 @@ export async function prepareFixtureObservation(
     throw new Error(
       "Legacy snapshot has no source observation; drain legacy work before upgrade or explicitly pause it",
     );
-  const sources = sourceSchema.parse(current.sourceEvents);
+  const sources = parseSourceEvents(current.sourceEvents);
+  const reviews = await prisma.sourceEventReview.findMany({
+    where: { fixtureId: fixture.id, status: { in: ["pending", "dismissed"] } },
+    select: { sourceEventId: true },
+  });
+  const held = new Set(reviews.map((review) => review.sourceEventId));
   const events: NormalizedFootballEvent[] = [];
   for (const source of sources) {
+    if (held.has(source.sourceEventId!)) continue;
     const input = Object.fromEntries(
       Object.entries(source).filter(([, value]) => value !== undefined),
     ) as unknown as NormalizedSourceEvent;

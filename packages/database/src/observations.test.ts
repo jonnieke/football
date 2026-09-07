@@ -36,6 +36,7 @@ function harness(sourceEvents: unknown = [source]) {
     },
   };
   const store = {
+    sourceEventReview: { findMany: vi.fn().mockResolvedValue([]) },
     fixtureState: {
       findUniqueOrThrow: vi
         .fn()
@@ -54,6 +55,16 @@ function harness(sourceEvents: unknown = [source]) {
   };
 }
 describe("immutable observation preparation", () => {
+  it("keeps held events out of later observations without dropping lifecycle events", async () => {
+    const { prisma, job, store, current } = harness();
+    store.sourceEventReview.findMany.mockResolvedValue([
+      { sourceEventId: source.sourceEventId },
+    ]);
+    current.status = "finished";
+    expect(await prepareFixtureObservation(prisma, job)).toEqual([
+      expect.objectContaining({ eventType: "match_finished" }),
+    ]);
+  });
   it("uses captured late events without assigning the current fixture score", async () => {
     const { prisma, job } = harness();
     const events = await prepareFixtureObservation(prisma, job);

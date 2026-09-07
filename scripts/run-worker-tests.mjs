@@ -1,0 +1,19 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath, URL } from "node:url";
+
+const root = new URL("../", import.meta.url);
+const result = spawnSync(
+  process.execPath,
+  [
+    fileURLToPath(new URL("node_modules/vitest/vitest.mjs", root)),
+    "run",
+    "tests/workers",
+  ],
+  {
+    cwd: fileURLToPath(root),
+    stdio: "inherit",
+    env: { ...process.env, RUN_WORKER_TESTS: "true" },
+  },
+);
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;

@@ -28,17 +28,21 @@ export interface ContentGenerationJob {
   eventId: string;
 }
 
-export function createQueues(connection: ConnectionOptions): {
+export function createQueues(
+  connection: ConnectionOptions,
+  prefix = "bull",
+): {
   fixtureChanges: Queue<FixtureChangeJob>;
   contentGeneration: Queue<ContentGenerationJob>;
 } {
   return {
     fixtureChanges: new Queue<FixtureChangeJob>(QUEUE_NAMES.fixtureChanges, {
       connection,
+      prefix,
     }),
     contentGeneration: new Queue<ContentGenerationJob>(
       QUEUE_NAMES.contentGeneration,
-      { connection },
+      { connection, prefix },
     ),
   };
 }
