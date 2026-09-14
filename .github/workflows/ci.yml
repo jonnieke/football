@@ -48,4 +48,12 @@ jobs:
       - run: pnpm build
       - run: pnpm verify:runtime
       - run: pnpm build:vercel
+      - name: Build and verify admin deployment artifact
+        run: pnpm build:vercel apps/admin
       - run: pnpm test:workers
+      - name: Verify four-worker draft pipeline
+        timeout-minutes: 5
+        env:
+          RUN_WORKER_TESTS: "true"
+          RUN_PIPELINE_TESTS: "true"
+        run: pnpm exec vitest run tests/workers/ingestion.test.ts

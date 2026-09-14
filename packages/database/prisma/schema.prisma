@@ -213,7 +213,7 @@ model ContentItem {
   priority     String
   shortText    String   @map("short_text")
   standardText String   @map("standard_text")
-  status       String   @default("published")
+  status       String   @default("draft")
   createdAt    DateTime @default(now()) @map("created_at")
   publishedAt  DateTime? @map("published_at")
   publicationSequence BigInt? @unique @map("publication_sequence")
@@ -234,6 +234,16 @@ model FeedPublicationState {
   highWater BigInt @default(0) @map("high_water")
 
   @@map("feed_publication_state")
+}
+
+model ContentApproval {
+  id String @id @db.Uuid
+  contentId String @unique @map("content_id") @db.Uuid
+  actor String @db.VarChar(254)
+  fingerprint String @db.VarChar(64)
+  snapshot Json
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("content_approvals")
 }
 
 model ContentTemplate {

@@ -5,14 +5,16 @@ import { fileURLToPath, URL } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const project = process.argv[2] ?? ".";
-if (![".", "apps/api"].includes(project))
-  throw new Error("Expected project root . or apps/api");
+if (![".", "apps/api", "apps/admin"].includes(project))
+  throw new Error("Expected project root ., apps/api or apps/admin");
+const packageName = project === "apps/admin" ? "@fcp/admin" : "@fcp/api";
 const output = resolve(root, project, ".vercel/output");
-// Only these two generated artifact directories may be rebuilt; never .vercel metadata.
+// Only these generated artifact directories may be rebuilt; never .vercel metadata.
 if (
   ![
     resolve(root, ".vercel/output"),
     resolve(root, "apps/api/.vercel/output"),
+    resolve(root, "apps/admin/.vercel/output"),
   ].includes(output)
 )
   throw new Error("Unsafe build output");
@@ -30,13 +32,13 @@ function pnpm(args) {
   if (result.status !== 0) throw new Error(`pnpm ${args[0]} failed`);
 }
 pnpm(["db:generate"]);
-pnpm(["--filter", "@fcp/api...", "build"]);
+pnpm(["--filter", `${packageName}...`, "build"]);
 await rm(output, { recursive: true, force: true });
 await mkdir(resolve(output, "functions"), { recursive: true });
 const destination = resolve(output, "functions/api.func");
 pnpm([
   "--filter",
-  "@fcp/api",
+  packageName,
   "deploy",
   "--legacy",
   "--prod",
@@ -48,7 +50,7 @@ pnpm([
 // an API dependency and must not escape the uploaded function (or create a cycle).
 const selfLink = resolve(
   destination,
-  "node_modules/.pnpm/node_modules/@fcp/api",
+  `node_modules/.pnpm/node_modules/${packageName}`,
 );
 const selfStat = await lstat(selfLink).catch((error) => {
   if (error.code === "ENOENT") return null;

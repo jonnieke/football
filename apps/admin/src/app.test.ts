@@ -19,7 +19,15 @@ function setup() {
   const send = vi
     .fn<(email: string, token: string) => Promise<void>>()
     .mockResolvedValue();
-  const app = buildAdmin({ config, redis, store, send });
+  const dashboard = vi
+    .fn()
+    .mockResolvedValue({ database: "connected", data: { polls: [] } });
+  const content = {
+    list: vi.fn().mockResolvedValue([]),
+    approve: vi.fn().mockResolvedValue({ status: "published" }),
+    history: vi.fn().mockResolvedValue([]),
+  };
+  const app = buildAdmin({ config, redis, store, send, dashboard, content });
   apps.push(app);
   const post = (
     url: string,
@@ -47,8 +55,67 @@ function setup() {
     const cookies = confirmed.headers["set-cookie"] as string[];
     return cookies[0]!.split(";")[0]!;
   };
-  return { app, config, redis, store, send, post, login };
+  return { app, config, redis, store, send, post, login, dashboard, content };
 }
+it("requires an approved session and same-origin confirmation for publication", async () => {
+  const { app, post, login, content } = setup();
+  const input = {
+    id: "11111111-1111-4111-8111-111111111111",
+    fingerprint: "a".repeat(64),
+  };
+  expect((await app.inject("/api/content/drafts")).statusCode).toBe(401);
+  expect((await app.inject("/api/content/history")).statusCode).toBe(401);
+  expect((await post("/api/content/approve", input)).statusCode).toBe(401);
+  const cookie = await login();
+  expect(
+    (await post("/api/content/approve", input, cookie, "https://evil.example"))
+      .statusCode,
+  ).toBe(403);
+  expect(
+    (
+      await post(
+        "/api/content/approve",
+        { ...input, actor: "forged@example.com" },
+        cookie,
+      )
+    ).statusCode,
+  ).toBe(400);
+  expect(content.approve).not.toHaveBeenCalled();
+  expect((await post("/api/content/approve", input, cookie)).statusCode).toBe(
+    200,
+  );
+  expect(content.approve).toHaveBeenCalledWith(input, "admin@example.com");
+  await post("/auth/logout", {}, cookie);
+  expect((await post("/api/content/approve", input, cookie)).statusCode).toBe(
+    401,
+  );
+  expect(content.approve).toHaveBeenCalledTimes(1);
+});
+it("protects dashboard data, disables caching, redacts failures and revokes access", async () => {
+  const { app, login, post, dashboard } = setup();
+  expect((await app.inject("/api/dashboard")).statusCode).toBe(401);
+  expect(dashboard).not.toHaveBeenCalled();
+  const cookie = await login();
+  const result = await app.inject({
+    url: "/api/dashboard",
+    headers: { cookie },
+  });
+  expect(result.statusCode).toBe(200);
+  expect(result.headers["cache-control"]).toBe("no-store");
+  expect(result.json()).toMatchObject({ database: "connected" });
+  dashboard.mockRejectedValue(new Error("postgres://private-secret"));
+  const failed = await app.inject({
+    url: "/api/dashboard",
+    headers: { cookie },
+  });
+  expect(failed.statusCode).toBe(503);
+  expect(failed.body).not.toContain("private-secret");
+  await post("/auth/logout", {}, cookie);
+  expect(
+    (await app.inject({ url: "/api/dashboard", headers: { cookie } }))
+      .statusCode,
+  ).toBe(401);
+});
 it("rejects unauthorized reads, foreign/missing origins and form submissions", async () => {
   const { app, post, store } = setup();
   expect((await app.inject("/api/recipients")).statusCode).toBe(401);

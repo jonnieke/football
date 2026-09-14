@@ -155,8 +155,8 @@ export async function processContentDelivery(
           id: uuidv7(),
           eventId,
           ...generated,
-          status: "published",
-          publishedAt: new Date(),
+          status: "draft",
+          publishedAt: null,
         },
         update: {},
       });

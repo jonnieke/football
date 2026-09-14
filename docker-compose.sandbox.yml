@@ -1,0 +1,55 @@
+# TEST ONLY. Does not start the API, dashboard, ingestion, or any workers.
+# Always use this explicit file and project; never merge with docker-compose.yml.
+name: football-replay-sandbox
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: football_test
+      POSTGRES_PASSWORD: local_test_only
+      POSTGRES_DB: football_replay_test
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - sandbox_postgres:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "football_test",
+          "-d",
+          "football_replay_test",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:8-alpine
+    restart: "no"
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    ports:
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - sandbox_redis:/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  sandbox_postgres:
+  sandbox_redis:

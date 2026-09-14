@@ -1,4 +1,5 @@
 .git
+.sandbox-replay
 **/node_modules
 **/dist
 **/coverage

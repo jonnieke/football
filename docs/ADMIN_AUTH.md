@@ -8,11 +8,11 @@ approved-admin session. The API partner key never grants administrative access.
 ## Deployment and configuration
 
 This is a separate Node service, not part of the current API-only Vercel deployment.
-Deploy it behind HTTPS on a dedicated administrator origin. Use a host that runs
-the compiled Node entry point (`pnpm --filter @fcp/admin start`), or implement and
-verify a separate serverless adapter before using Vercel Functions. Do not run a
-persistent HTTP listener inside the existing API function. This change does not
-provision a host, change DNS, or configure live credentials.
+Deploy it behind HTTPS on a dedicated administrator origin. The separate Vercel
+serverless adapter is implemented and deployed; see [DASHBOARD.md](DASHBOARD.md)
+for its URL, configuration and verification limits. The standalone entry point
+(`pnpm --filter @fcp/admin start`) remains available for other hosts. Do not run
+a persistent HTTP listener inside the existing API function.
 
 Apply the recipient migration through the operator rollout procedure, install
 dependencies and run `pnpm build` before starting the admin app. Configure these

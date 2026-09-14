@@ -9,6 +9,7 @@ const result = spawnSync(
     fileURLToPath(new URL("node_modules/vitest/vitest.mjs", root)),
     "run",
     "tests/integration",
+    ...process.argv.slice(2),
   ],
   {
     cwd: fileURLToPath(root),

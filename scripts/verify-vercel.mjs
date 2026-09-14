@@ -16,7 +16,7 @@ import { fileURLToPath, URL } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const project = process.argv[2] ?? ".";
-assert.ok([".", "apps/api"].includes(project));
+assert.ok([".", "apps/api", "apps/admin"].includes(project));
 const output = resolve(root, project, ".vercel/output");
 const source = resolve(output, "functions/api.func");
 const routing = JSON.parse(
@@ -85,7 +85,24 @@ try {
     [
       "--input-type=module",
       "-e",
-      `
+      project === "apps/admin"
+        ? `
+    import assert from 'node:assert/strict';
+    import handler from './dist/handler.js';
+    import { buildAdmin } from './dist/app.js';
+    import { adminConfig } from './dist/config.js';
+    const response = { statusCode: 0, setHeader() {}, end(body) { this.body = body; } };
+    await handler({}, response);
+    assert.equal(response.statusCode, 503);
+    assert.doesNotMatch(response.body, /DATABASE_URL|RESEND_API_KEY/);
+    const config = adminConfig({ NODE_ENV:'test', ADMIN_ORIGIN:'https://admin.example.com', ADMIN_EMAILS:'admin@example.com', ADMIN_NAMESPACE:'artifact-test', RESEND_FROM:'login@example.com', RESEND_API_KEY:'unused-test-key' });
+    const app = buildAdmin({ config, redis:{ get:async()=>null, eval:async()=>1 }, store:{ list:async()=>[], change:async()=>{}, history:async()=>[] } });
+    for (const url of ['/', '/admin.css', '/admin.js']) assert.equal((await app.inject(url)).statusCode, 200);
+    assert.equal((await app.inject('/api/dashboard')).statusCode, 401);
+    await app.close();
+    console.log('PASS: isolated administrator handler, assets and protected dashboard');
+  `
+        : `
     import assert from 'node:assert/strict';
     import handler from './dist/handler.js';
     import { buildApp } from './dist/app.js';

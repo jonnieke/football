@@ -1,0 +1,16 @@
+# Exclude credentials, local test helpers and Windows-generated build artifacts.
+.env
+.env.*
+**/.env
+**/.env.*
+**/.vercel
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+**/*.pem
+**/*.key
+scripts/dashboard-preview.mjs
+scripts/dashboard-live-check.mjs
+scripts/workers-smoke-test.mjs
+**/.sandbox-replay

@@ -9,6 +9,10 @@ export function adminConfig(env: NodeJS.ProcessEnv) {
     ADMIN_ORIGIN: z.url(),
     ADMIN_EMAILS: z.string().min(1),
     ADMIN_NAMESPACE: z.string().regex(/^[a-zA-Z0-9_-]{3,64}$/),
+    QUEUE_PREFIX: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]{1,80}$/)
+      .default("bull"),
     RESEND_FROM: email,
     RESEND_API_KEY: z.string().min(10),
   });

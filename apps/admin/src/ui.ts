@@ -1,9 +1,17 @@
-export const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Alert Settings · Football Platform</title><link rel="stylesheet" href="/admin.css"><script src="/admin.js" defer></script></head><body>
+import {
+  dashboardHtml,
+  dashboardCss,
+  dashboardScript,
+} from "./dashboard-ui.js";
+import { contentHtml, contentScript } from "./content-ui.js";
+export const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Control Room · Football Platform</title><link rel="stylesheet" href="/admin.css"><script src="/admin.js" defer></script></head><body>
 <header><a href="/settings" class="brand">FOOTBALL <span>CONTROL ROOM</span></a><span class="badge">ADMINISTRATION</span></header>
-<main><p class="eyebrow">OPERATIONS / ALERTS</p><h1>Keep the right people informed.</h1><p class="intro">Manage who hears about pipeline issues, and when.</p><p id="notice" role="status" aria-live="polite"></p>
+<main><p class="eyebrow">OPERATIONS / CONTROL ROOM</p><h1>Know what is happening.</h1><p class="intro">Follow your football pipeline, inspect recent activity, and manage alert recipients.</p><p id="notice" role="status" aria-live="polite"></p>
 <section id="login" hidden><h2>Administrator sign-in</h2><p>Only approved administrators can access these settings. No password required.</p><form id="login-form"><label for="login-email">Administrator email</label><input id="login-email" type="email" autocomplete="email" required maxlength="254"><button>Send sign-in link</button></form><p class="hint">Open the email link in this browser. The link expires after 10 minutes.</p></section>
 <section id="confirm" hidden><h2>Confirm your sign-in</h2><p>Continue only if you requested this administrator login in this browser.</p><button id="confirm-login">Confirm sign-in</button> <a href="/login">Request a new link</a></section>
 <div id="settings" hidden><div class="toolbar"><p>Signed in as <strong id="identity"></strong></p><button id="logout" class="secondary">Sign out</button></div>
+${dashboardHtml}
+${contentHtml}
 <section><div class="toolbar"><h2>Alert recipients</h2><button id="reload" class="secondary">Reload list</button></div><p>Recipients do not receive administrator access.</p><p class="hint">Delivery and scheduling are not activated yet. Preferences are saved for the upcoming alert sender.</p><div id="recipients"></div><button id="more" class="secondary" hidden>Load more recipients</button></section>
 <section><h2>Add a recipient</h2><form id="add-form"><label for="new-email">Email address</label><input id="new-email" type="email" autocomplete="off" maxlength="254" required><fieldset><legend>Notification preferences</legend><label><input type="checkbox" name="enabled" checked> Enabled</label><label><input type="checkbox" name="warnings" checked> Warnings</label><label><input type="checkbox" name="critical" checked> Critical issues</label><label><input type="checkbox" name="recovery" checked> Recovery</label></fieldset><button>Add recipient</button></form></section>
 <section id="history-panel" hidden><h2>Change history</h2><p class="hint">Latest 100 changes, including previous addresses.</p><pre id="history"></pre></section></div><noscript>JavaScript is required for secure sign-in and settings changes.</noscript></main><footer>Football Platform · Restricted operator access</footer></body></html>`;
@@ -41,10 +49,13 @@ byId('add-form').addEventListener('submit', event => { event.preventDefault(); b
 byId('reload').addEventListener('click', event => busy(event.target,() => load(true)));
 byId('more').addEventListener('click', event => busy(event.target,() => load(false)));
 byId('logout').addEventListener('click', event => busy(event.target,async () => { await api('/auth/logout',{}); location.assign('/login'); }));
+${dashboardScript}
+${contentScript}
 if (location.pathname === '/auth/confirm') {
   const token = new URLSearchParams(location.hash.slice(1)).get('token'); history.replaceState(null,'','/auth/confirm'); byId('confirm').hidden = false;
   if (!token) { notice('No sign-in token. Request a new login link.'); byId('confirm-login').disabled = true; }
   byId('confirm-login').addEventListener('click', event => busy(event.target,async () => { await api('/auth/redeem',{ token }); location.replace('/settings'); }));
 } else if (location.pathname === '/login') byId('login').hidden = false;
-else (async () => { const session = await api('/api/session'); byId('identity').textContent = session.email; byId('settings').hidden = false; await load(true); })().catch(error => notice(error.message));
+else (async () => { const session = await api('/api/session'); byId('identity').textContent = session.email; byId('settings').hidden = false; await Promise.all([loadDashboard(),load(true),loadDrafts(),loadApprovalHistory()]); })().catch(error => notice(error.message));
 `;
+export const operationsStylesheet = stylesheet + dashboardCss;

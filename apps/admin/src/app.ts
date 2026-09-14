@@ -1,9 +1,13 @@
 import Fastify from "fastify";
 import { z, ZodError } from "zod";
-import { recipientChangeSchema } from "@fcp/database";
+import {
+  recipientChangeSchema,
+  contentApprovalSchema,
+  ContentApprovalConflict,
+} from "@fcp/database";
 import { adminAuth, secret, sendLogin, type AuthRedis } from "./auth.js";
 import type { AdminConfig } from "./config.js";
-import { page, stylesheet, browserScript } from "./ui.js";
+import { page, operationsStylesheet, browserScript } from "./ui.js";
 
 export interface RecipientStore {
   list(after?: string): Promise<unknown>;
@@ -22,12 +26,25 @@ export function buildAdmin(deps: {
   config: AdminConfig;
   redis: AuthRedis;
   store: RecipientStore;
+  dashboard?: () => Promise<unknown>;
+  content?: {
+    list(after?: string): Promise<unknown>;
+    approve(input: unknown, actor: string): Promise<unknown>;
+    history(): Promise<unknown>;
+  };
   send?: (email: string, token: string) => Promise<void>;
+  acquireRedis?: () => { ready: Promise<void>; release: () => void };
 }) {
   const { config, redis, store } = deps;
   const auth = adminAuth(redis, config);
   // No automatic request logs: even malicious query strings must not leak credentials.
   const app = Fastify({ logger: false, trustProxy: false, bodyLimit: 16384 });
+  const leases = new WeakMap<object, () => void>();
+  app.addHook("onResponse", (request, _reply, done) => {
+    leases.get(request)?.();
+    leases.delete(request);
+    done();
+  });
   const sessionName = config.secure ? "__Host-fcp_admin" : "fcp_admin";
   const browserName = config.secure ? "__Host-fcp_login" : "fcp_login";
   const cookie = (name: string, value: string, seconds: number) =>
@@ -63,6 +80,11 @@ export function buildAdmin(deps: {
         throw new HttpError(415, "JSON required");
     }
     if (request.url.startsWith("/api/") || request.url.startsWith("/auth/")) {
+      if (deps.acquireRedis) {
+        const lease = deps.acquireRedis();
+        leases.set(request, lease.release);
+        await lease.ready;
+      }
       if (!(await auth.limit("requests", request.ip, 120, 60)))
         throw new HttpError(429, "Too many requests; try again later");
     }
@@ -92,7 +114,7 @@ export function buildAdmin(deps: {
   for (const path of ["/", "/login", "/auth/confirm", "/settings"])
     app.get(path, (_request, reply) => reply.type("text/html").send(page));
   app.get("/admin.css", (_request, reply) =>
-    reply.type("text/css").send(stylesheet),
+    reply.type("text/css").send(operationsStylesheet),
   );
   app.get("/admin.js", (_request, reply) =>
     reply.type("application/javascript").send(browserScript),
@@ -172,12 +194,47 @@ export function buildAdmin(deps: {
         readCookie(request.headers.cookie, sessionName),
       ),
     }));
+    secured.get("/api/content/drafts", async (request) => {
+      if (!deps.content)
+        throw new HttpError(503, "Content approval is not configured");
+      const { after } = z
+        .object({ after: z.uuid().optional() })
+        .strict()
+        .parse(request.query);
+      return { items: await deps.content.list(after) };
+    });
+    secured.get("/api/content/history", async () => {
+      if (!deps.content)
+        throw new HttpError(503, "Content approval is not configured");
+      return { items: await deps.content.history() };
+    });
+    secured.post("/api/content/approve", async (request) => {
+      if (!deps.content)
+        throw new HttpError(503, "Content approval is not configured");
+      const actor = await auth.identity(
+        readCookie(request.headers.cookie, sessionName),
+      );
+      if (!actor) throw new HttpError(401, "Session expired");
+      const input = contentApprovalSchema.parse(request.body);
+      try {
+        return { item: await deps.content.approve(input, actor) };
+      } catch (error) {
+        if (error instanceof ContentApprovalConflict)
+          throw new HttpError(409, error.message);
+        throw error;
+      }
+    });
     secured.get("/api/recipients", async (request) => {
       const query = z
         .object({ after: z.uuid().optional() })
         .strict()
         .parse(request.query);
       return { items: await store.list(query.after) };
+    });
+    secured.get("/api/dashboard", async () => {
+      if (!deps.dashboard)
+        throw new HttpError(503, "Dashboard is not configured");
+      return deps.dashboard();
     });
     secured.get("/api/history/:id", async (request) => {
       const { id } = z.object({ id: z.uuid() }).parse(request.params);

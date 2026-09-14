@@ -12,3 +12,4 @@ packages/database/src/generated/
 *.tsbuildinfo
 *.pem
 *.key
+.sandbox-replay/

@@ -224,6 +224,7 @@ describeIntegration(
           eventId: canonical.id,
           ...generated,
           publishedAt: new Date("2026-08-28T18:12:01Z"),
+          status: "published",
         },
       });
 
@@ -284,6 +285,7 @@ describeIntegration(
           eventId: second.id,
           ...secondContent,
           publishedAt: new Date("2026-08-28T18:20:01Z"),
+          status: "published",
         },
       });
       const resumed = await app.inject({
