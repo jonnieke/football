@@ -1,0 +1,23 @@
+{
+  "displayName": "Football Supabase backup missing for 27 hours",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "subject": "Football backup missing - action needed",
+    "content": "No successful write to the dedicated football database backup bucket for 27 hours. Check fcp-supabase-backup on VM fcp-workers-1, inspect its recent logs and /var/lib/fcp/backups/last-success.json, then confirm a new Google Cloud Storage object exists. This alert does not include database contents. A normal backup runs at 03:00 UTC daily."
+  },
+  "combiner": "OR",
+  "enabled": true,
+  "conditions": [
+    {
+      "displayName": "No successful backup-bucket write in 27 hours",
+      "conditionPrometheusQueryLanguage": {
+        "query": "absent_over_time({\"storage.googleapis.com/api/request_count\",bucket_name=\"fcp-supabase-backups-ball-mtaani-496717\",method=\"WriteObject\",response_code=\"OK\"}[27h])",
+        "duration": "0s",
+        "evaluationInterval": "300s"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationPrompts": ["OPENED", "CLOSED"]
+  }
+}

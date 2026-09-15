@@ -4,6 +4,8 @@ import type { FixtureChangeJob, ContentGenerationJob } from "@fcp/shared";
 import { v7 as uuidv7, validate as isUuid } from "uuid";
 import type { PrismaClient } from "./generated/prisma/client.ts";
 import { createCanonicalEvent, SourceEventHeldError } from "./events.js";
+import { isFreshForPublication } from "./live-publication.js";
+import { enqueueMatchEmails } from "./match-email.js";
 import {
   checkpointEvents,
   completeWork,
@@ -102,7 +104,7 @@ export async function processContentDelivery(
     throw new Error("Outbox kind mismatch");
   if (work.completedAt !== null || work.pausedAt !== null) return null;
   try {
-    const { eventId } = contentWorkSchema.parse(work.payload);
+    const { eventId, liveObservedAt } = contentWorkSchema.parse(work.payload);
     const event = await prisma.footballEvent.findUniqueOrThrow({
       where: { id: eventId },
       include: {
@@ -143,6 +145,16 @@ export async function processContentDelivery(
         data: { completedAt: new Date(), lastErrorCode: null },
       });
       if (claim.count !== 1) return null;
+      // Serialize publication against admin pause: once pause commits, no new
+      // automatic publication can commit using a stale enabled value.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`coverage:${event.fixture.competitionId}`}, 0))`;
+      const coverage = await tx.competition.findUniqueOrThrow({
+        where: { id: event.fixture.competitionId },
+        select: { enabled: true },
+      });
+      const now = new Date();
+      const publish =
+        coverage.enabled && isFreshForPublication(liveObservedAt, now);
       const item = await tx.contentItem.upsert({
         where: {
           eventId_channel_contentType: {
@@ -155,11 +167,23 @@ export async function processContentDelivery(
           id: uuidv7(),
           eventId,
           ...generated,
-          status: "draft",
-          publishedAt: null,
+          status: publish ? "published" : "draft",
+          publishedAt: publish ? now : null,
         },
         update: {},
       });
+      if (
+        publish &&
+        item.status === "published" &&
+        item.publishedAt?.getTime() === now.getTime()
+      ) {
+        await enqueueMatchEmails(tx, {
+          eventId,
+          subject: `Football: ${generated.shortText}`,
+          text: generated.standardText,
+          now,
+        });
+      }
       return item;
     });
   } catch (error) {

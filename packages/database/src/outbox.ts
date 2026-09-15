@@ -9,8 +9,12 @@ export const fixtureWorkSchema = z.object({
   fixtureId: z.uuid(),
   previousStateId: z.uuid(),
   currentStateId: z.uuid(),
+  previousObservedAt: z.iso.datetime().optional(),
 });
-export const contentWorkSchema = z.object({ eventId: z.uuid() });
+export const contentWorkSchema = z.object({
+  eventId: z.uuid(),
+  liveObservedAt: z.coerce.date().optional(),
+});
 const draftSchema = z.object({
   fixtureId: z.uuid(),
   eventType: z.enum(FOOTBALL_EVENT_TYPES),
@@ -24,6 +28,7 @@ const draftSchema = z.object({
   homeScore: z.number().int().optional(),
   awayScore: z.number().int().optional(),
   occurredAt: z.coerce.date().optional(),
+  liveObservedAt: z.coerce.date().optional(),
 });
 export const preparedEventsSchema = z
   .array(draftSchema)
@@ -52,8 +57,18 @@ export function ensureFixtureWork(
   });
 }
 
-export function ensureContentWork(store: Store, eventId: string) {
-  const payload = contentWorkSchema.parse({ eventId });
+export function ensureContentWork(
+  store: Store,
+  eventId: string,
+  liveObservedAt?: Date,
+) {
+  const parsed = contentWorkSchema.parse({ eventId, liveObservedAt });
+  const payload = {
+    eventId: parsed.eventId,
+    ...(parsed.liveObservedAt
+      ? { liveObservedAt: parsed.liveObservedAt.toISOString() }
+      : {}),
+  };
   const dedupeKey = `content-${payload.eventId}`;
   return store.workOutbox.upsert({
     where: { dedupeKey },

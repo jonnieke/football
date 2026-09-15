@@ -4,15 +4,20 @@ import {
   dashboardScript,
 } from "./dashboard-ui.js";
 import { contentHtml, contentScript } from "./content-ui.js";
+import { leagueHtml, leagueScript, leagueCss } from "./league-ui.js";
+import { liveHtml, liveScript } from "./live-ui.js";
 export const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Control Room · Football Platform</title><link rel="stylesheet" href="/admin.css"><script src="/admin.js" defer></script></head><body>
 <header><a href="/settings" class="brand">FOOTBALL <span>CONTROL ROOM</span></a><span class="badge">ADMINISTRATION</span></header>
 <main><p class="eyebrow">OPERATIONS / CONTROL ROOM</p><h1>Know what is happening.</h1><p class="intro">Follow your football pipeline, inspect recent activity, and manage alert recipients.</p><p id="notice" role="status" aria-live="polite"></p>
 <section id="login" hidden><h2>Administrator sign-in</h2><p>Only approved administrators can access these settings. No password required.</p><form id="login-form"><label for="login-email">Administrator email</label><input id="login-email" type="email" autocomplete="email" required maxlength="254"><button>Send sign-in link</button></form><p class="hint">Open the email link in this browser. The link expires after 10 minutes.</p></section>
 <section id="confirm" hidden><h2>Confirm your sign-in</h2><p>Continue only if you requested this administrator login in this browser.</p><button id="confirm-login">Confirm sign-in</button> <a href="/login">Request a new link</a></section>
 <div id="settings" hidden><div class="toolbar"><p>Signed in as <strong id="identity"></strong></p><button id="logout" class="secondary">Sign out</button></div>
+${liveHtml}
 ${dashboardHtml}
+${leagueHtml}
 ${contentHtml}
-<section><div class="toolbar"><h2>Alert recipients</h2><button id="reload" class="secondary">Reload list</button></div><p>Recipients do not receive administrator access.</p><p class="hint">Delivery and scheduling are not activated yet. Preferences are saved for the upcoming alert sender.</p><div id="recipients"></div><button id="more" class="secondary" hidden>Load more recipients</button></section>
+<section><div class="toolbar"><h2>Recent match email activity</h2><button id="email-reload" class="secondary">Refresh email status</button></div><p class="hint">Latest 50 deliveries. Accepted means Resend accepted the request, not confirmed inbox delivery. Pending can mean the sender is stopped or waiting to retry.</p><div id="email-activity" role="status"></div></section>
+<section><div class="toolbar"><h2>Alert recipients</h2><button id="reload" class="secondary">Reload list</button></div><p>Recipients do not receive administrator access. Add only people who have agreed to receive alerts.</p><p class="hint">Match alerts cover fresh automatic reports from enabled leagues. The separate email worker must be running to send them. Warnings, critical issues and recovery preferences are for system health; their sender is not activated here. Editing, disabling or removing a recipient cancels their remaining queued alerts, except a send already in progress.</p><div id="recipients"></div><button id="more" class="secondary" hidden>Load more recipients</button></section>
 <section><h2>Add a recipient</h2><form id="add-form"><label for="new-email">Email address</label><input id="new-email" type="email" autocomplete="off" maxlength="254" required><fieldset><legend>Notification preferences</legend><label><input type="checkbox" name="enabled" checked> Enabled</label><label><input type="checkbox" name="warnings" checked> Warnings</label><label><input type="checkbox" name="critical" checked> Critical issues</label><label><input type="checkbox" name="recovery" checked> Recovery</label></fieldset><button>Add recipient</button></form></section>
 <section id="history-panel" hidden><h2>Change history</h2><p class="hint">Latest 100 changes, including previous addresses.</p><pre id="history"></pre></section></div><noscript>JavaScript is required for secure sign-in and settings changes.</noscript></main><footer>Football Platform · Restricted operator access</footer></body></html>`;
 export const stylesheet = `:root{font:16px/1.5 system-ui,sans-serif;color:#18352d;background:#f3f5ef}*{box-sizing:border-box}body{margin:0}header{display:flex;justify-content:space-between;align-items:center;padding:24px 5vw;border-bottom:1px solid #d4ded4;background:#fff}.brand{font-weight:800;color:#173d2f;text-decoration:none;letter-spacing:.04em}.brand span{font-size:11px;display:block;letter-spacing:.2em;color:#64796b}.badge,.eyebrow{font-size:11px;letter-spacing:.16em;font-weight:700}.badge{padding:7px 12px;border:1px solid #cedacd;border-radius:20px}main{max-width:1000px;margin:50px auto;padding:0 24px}h1{font-size:clamp(30px,4vw,48px);line-height:1.12;letter-spacing:-.04em;margin:12px 0}h2{font-size:21px;letter-spacing:-.025em;margin:0 0 8px}.intro{font-size:18px;color:#536b5d;margin-bottom:32px}section{background:#fff;border:1px solid #d5ded4;border-radius:14px;padding:28px;margin:22px 0}section p{color:#536b5d}label{display:block;font-size:14px;font-weight:600}input[type=email]{display:block;width:100%;max-width:480px;border:1px solid #aabdb0;padding:12px;border-radius:6px;margin:7px 0 18px;font:inherit}button{background:#24553d;color:white;border:1px solid #24553d;padding:10px 16px;border-radius:6px;font:600 14px system-ui;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#fff;color:#24553d;border-color:#aabdb0}button.danger{background:#fff;color:#a03b32;border-color:#dab0ac}button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #9bb838;outline-offset:3px}.toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center}.hint{font-size:13px;color:#66766a}fieldset{border:0;padding:0;display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 20px}legend{font-size:13px;color:#647567;margin-bottom:10px}input[type=checkbox]{accent-color:#24553d;width:16px;height:16px;vertical-align:middle;margin-right:5px}.recipient{border-top:1px solid #e0e5dc;padding:22px 0 4px}.actions{display:flex;gap:10px;margin-bottom:16px}#notice:not(:empty){padding:14px 18px;background:#edf3ce;border-left:4px solid #789334;border-radius:4px;white-space:pre-wrap}#history{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f1;padding:16px;border-radius:6px}footer{font-size:12px;color:#66766a;padding:24px;text-align:center}a{color:#24553d}[hidden]{display:none!important}@media(max-width:640px){header{padding:18px 24px}.badge{display:none}main{margin:28px auto;padding:0 16px}section{padding:20px}.toolbar{align-items:flex-start;flex-direction:column}.actions{flex-wrap:wrap}fieldset{gap:12px}}`;
@@ -26,7 +31,11 @@ async function api(path, data) {
   return body;
 }
 async function busy(button, work) { button.disabled = true; try { await work(); } catch (error) { notice(error.message || 'Request failed'); } finally { button.disabled = false; } }
-const preferences = ['enabled','warnings','critical','recovery'];
+const preferences = ['enabled','warnings','critical','recovery','matchAlerts'];
+async function loadEmailActivity() { const panel = byId('email-activity'); try { const result = await api('/api/match-emails'); panel.replaceChildren(); if (!result.items.length) panel.textContent = 'No match emails queued yet.'; for (const item of result.items) { const row = document.createElement('p'); row.textContent = item.email + ' · ' + item.status + ' · attempts: ' + item.attempts + ' · ' + item.subject + (item.lastErrorCode ? ' · ' + item.lastErrorCode : ''); panel.append(row); } } catch (error) { panel.textContent = 'Email status unavailable. ' + error.message; } }
+byId('email-reload').addEventListener('click', event => busy(event.target,loadEmailActivity));
+const preferenceLabels = { enabled:'Enabled', warnings:'System warnings', critical:'Critical system issues', recovery:'System recovery', matchAlerts:'Match alerts (automatic reports)' };
+const matchLabel = document.createElement('label'); const matchCheckbox = document.createElement('input'); matchCheckbox.type = 'checkbox'; matchCheckbox.name = 'matchAlerts'; matchLabel.append(matchCheckbox,preferenceLabels.matchAlerts); byId('add-form').querySelector('fieldset').append(matchLabel);
 function settings(form) { const result = { email:form.querySelector('input[type=email]').value }; for (const name of preferences) result[name] = form.elements.namedItem(name).checked; return result; }
 let cursor;
 function recipient(item) {
@@ -34,7 +43,7 @@ function recipient(item) {
   const label = document.createElement('label'); label.textContent = 'Recipient email'; label.htmlFor = 'email-' + item.id;
   const email = document.createElement('input'); email.type = 'email'; email.id = label.htmlFor; email.value = item.email; email.required = true; email.maxLength = 254; form.append(label,email);
   const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Notification preferences'; fieldset.append(legend);
-  for (const name of preferences) { const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.name = name; input.checked = item[name]; label.append(input,name[0].toUpperCase() + name.slice(1)); fieldset.append(label); } form.append(fieldset);
+  for (const name of preferences) { const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.name = name; input.checked = Boolean(item[name]); label.append(input,preferenceLabels[name]); fieldset.append(label); } form.append(fieldset);
   const actions = document.createElement('div'); actions.className = 'actions';
   const save = document.createElement('button'); save.textContent = 'Save changes';
   const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Remove';
@@ -51,11 +60,13 @@ byId('more').addEventListener('click', event => busy(event.target,() => load(fal
 byId('logout').addEventListener('click', event => busy(event.target,async () => { await api('/auth/logout',{}); location.assign('/login'); }));
 ${dashboardScript}
 ${contentScript}
+${leagueScript}
+${liveScript}
 if (location.pathname === '/auth/confirm') {
   const token = new URLSearchParams(location.hash.slice(1)).get('token'); history.replaceState(null,'','/auth/confirm'); byId('confirm').hidden = false;
   if (!token) { notice('No sign-in token. Request a new login link.'); byId('confirm-login').disabled = true; }
   byId('confirm-login').addEventListener('click', event => busy(event.target,async () => { await api('/auth/redeem',{ token }); location.replace('/settings'); }));
 } else if (location.pathname === '/login') byId('login').hidden = false;
-else (async () => { const session = await api('/api/session'); byId('identity').textContent = session.email; byId('settings').hidden = false; await Promise.all([loadDashboard(),load(true),loadDrafts(),loadApprovalHistory()]); })().catch(error => notice(error.message));
+else (async () => { const session = await api('/api/session'); byId('identity').textContent = session.email; byId('settings').hidden = false; await Promise.all([startLiveFeed(),loadDashboard(),load(true),loadDrafts(),loadApprovalHistory(),loadLeagues(),loadLeagueHistory(),loadEmailActivity()]); })().catch(error => notice(error.message));
 `;
-export const operationsStylesheet = stylesheet + dashboardCss;
+export const operationsStylesheet = stylesheet + dashboardCss + leagueCss;

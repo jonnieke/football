@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { buildAdmin } from "./app.js";
+import { CompetitionConflict } from "@fcp/database";
 import {
   memoryAuthRedis,
   testAdminConfig,
@@ -27,7 +28,24 @@ function setup() {
     approve: vi.fn().mockResolvedValue({ status: "published" }),
     history: vi.fn().mockResolvedValue([]),
   };
-  const app = buildAdmin({ config, redis, store, send, dashboard, content });
+  const competitions = {
+    list: vi.fn().mockResolvedValue([]),
+    change: vi.fn().mockResolvedValue({ enabled: false }),
+    history: vi.fn().mockResolvedValue([]),
+  };
+  const liveFeed = vi.fn().mockResolvedValue({ items: [], cursor: "test" });
+  const matchEmails = vi.fn().mockResolvedValue([]);
+  const app = buildAdmin({
+    config,
+    redis,
+    store,
+    send,
+    dashboard,
+    content,
+    competitions,
+    liveFeed,
+    matchEmails,
+  });
   apps.push(app);
   const post = (
     url: string,
@@ -55,8 +73,107 @@ function setup() {
     const cookies = confirmed.headers["set-cookie"] as string[];
     return cookies[0]!.split(";")[0]!;
   };
-  return { app, config, redis, store, send, post, login, dashboard, content };
+  return {
+    matchEmails,
+    liveFeed,
+    app,
+    config,
+    redis,
+    store,
+    send,
+    post,
+    login,
+    dashboard,
+    content,
+    competitions,
+  };
 }
+it("protects live updates and validates read positions", async () => {
+  const { app, login, post, liveFeed } = setup();
+  expect((await app.inject("/api/live-feed")).statusCode).toBe(401);
+  expect(liveFeed).not.toHaveBeenCalled();
+  const cookie = await login();
+  const result = await app.inject({
+    url: "/api/live-feed",
+    headers: { cookie },
+  });
+  expect(result.statusCode).toBe(200);
+  expect(result.headers["cache-control"]).toBe("no-store");
+  for (const query of [
+    "after=oops",
+    "limit=100000",
+    "after=" + "9".repeat(100),
+  ])
+    expect(
+      (
+        await app.inject({
+          url: "/api/live-feed?" + query,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(400);
+  expect(liveFeed).toHaveBeenCalledTimes(1);
+  await post("/auth/logout", {}, cookie);
+  expect(
+    (await app.inject({ url: "/api/live-feed", headers: { cookie } }))
+      .statusCode,
+  ).toBe(401);
+});
+it("keeps match-email status behind the administrator session", async () => {
+  const { app, login, matchEmails } = setup();
+  expect((await app.inject({ url: "/api/match-emails" })).statusCode).toBe(401);
+  expect(matchEmails).not.toHaveBeenCalled();
+  const cookie = await login();
+  expect(
+    (
+      await app.inject({ url: "/api/match-emails", headers: { cookie } })
+    ).json(),
+  ).toEqual({ items: [] });
+  expect(matchEmails).toHaveBeenCalledTimes(1);
+});
+it("protects league controls and derives the audit actor from the session", async () => {
+  const { app, post, login, competitions } = setup();
+  const input = {
+    action: "add",
+    sourceId: "39",
+    season: 2026,
+    name: "Premier League",
+  };
+  for (const path of ["/api/competitions", "/api/competitions/history"])
+    expect((await app.inject(path)).statusCode).toBe(401);
+  expect((await post("/api/competitions", input)).statusCode).toBe(401);
+  const cookie = await login();
+  expect(
+    (await post("/api/competitions", input, cookie, "https://evil.example"))
+      .statusCode,
+  ).toBe(403);
+  for (const body of [
+    { ...input, actor: "forged@example.com" },
+    { ...input, season: 0 },
+    { ...input, sourceId: "https://evil.example" },
+    { ...input, enabled: true },
+  ])
+    expect((await post("/api/competitions", body, cookie)).statusCode).toBe(
+      400,
+    );
+  expect(competitions.change).not.toHaveBeenCalled();
+  expect((await post("/api/competitions", input, cookie)).statusCode).toBe(200);
+  expect(competitions.change).toHaveBeenCalledWith(input, "admin@example.com");
+  competitions.change.mockRejectedValueOnce(
+    new CompetitionConflict("Reload leagues"),
+  );
+  expect((await post("/api/competitions", input, cookie)).statusCode).toBe(409);
+  expect(
+    (
+      await app.inject({
+        url: "/api/competitions?after=bad",
+        headers: { cookie },
+      })
+    ).statusCode,
+  ).toBe(400);
+  await post("/auth/logout", {}, cookie);
+  expect((await post("/api/competitions", input, cookie)).statusCode).toBe(401);
+});
 it("requires an approved session and same-origin confirmation for publication", async () => {
   const { app, post, login, content } = setup();
   const input = {

@@ -1,6 +1,14 @@
 # Draft-first content approval
 
-Implemented locally; NOT deployed or migrated in production.
+**Direction changed:** mandatory approval is no longer the product goal. See
+`AUTOMATIC_REPORTING.md` for the local automatic-publication implementation and
+remaining rollout work. The deployed service and historical records below describe
+the earlier approval-based release, not proof that automatic reporting is live.
+
+Database migration applied and verified in production on 2026-09-15 (Africa/Nairobi).
+The updated admin was deployed on 2026-09-15; workers remain stopped. Live
+authenticated review still needs operator verification. See
+`DRAFT_APPROVAL_MIGRATION_RECORD.md` for the database-only operation and its boundaries.
 
 ## Operator flow
 
@@ -14,6 +22,30 @@ Implemented locally; NOT deployed or migrated in production.
 Drafts are listed 50 at a time with a load-more cursor. Unapproved drafts remain private.
 This version does not implement editing, rejection, bulk approval, or automatic approval.
 Draft accumulation therefore needs operator attention before any long-running trial.
+
+## Historical/catch-up review warning (deployed 2026-09-15)
+
+Dashboard deployment `dpl_BrQ5pMEFwPYZUtgpA48S2gVRM1GZ` was built and promoted
+after health (200), anonymous draft denial (401), and served warning-script checks
+passed. This includes local changes on top of `6549ab6`, not a new committed release.
+No worker startup, migration, or publication accompanied deployment. The authenticated
+visual check remains for the operator; asset checks are not a full browser review.
+
+Draft cards flag finished fixtures or kickoff times at least 24 hours old as
+**HISTORICAL / CATCH-UP**. Invalid kickoff dates receive a timing-unverified warning.
+Draft creation time is displayed separately and explicitly is not the event time.
+An unflagged item is not certified live or independently verified.
+
+Clicking publish re-evaluates kickoff age and requires an additional warning
+confirmation before the existing exact-text confirmation. Cancelling either stops
+the browser action. Fixture status reflects the last draft-list response; reload
+for updated match status. This is an editorial UI safeguard, not a new server-side
+authorization rule or a replacement for checking facts.
+
+The warning does not modify draft text, feed payloads, approval fingerprints, or
+historical audit records. It explicitly warns that publication does not turn the
+alert into a recap or attach the dashboard label to feed text. No schema migration
+is needed; the protected draft-list response now includes existing fixture status.
 
 ## Guarantees and boundaries
 

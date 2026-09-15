@@ -14,6 +14,7 @@
     "monitor:check": "tsx scripts/monitor-check.ts",
     "workers:check": "tsx scripts/workers-check.ts",
     "alert:recipients": "tsx scripts/alert-recipients.ts",
+    "alerts:matches": "tsx scripts/match-email-worker.ts",
     "source:review": "tsx scripts/source-reviews.ts",
     "feed:reset-cursors": "tsx scripts/reset-feed-cursors.ts",
     "lint": "eslint .",

@@ -36,7 +36,11 @@ function harness(kind = "fixture_change") {
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   };
   const contentItem = { upsert: vi.fn().mockResolvedValue({ id }) };
-  const tx = { workOutbox, contentItem };
+  const tx = {
+    workOutbox, contentItem,
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    competition: { findUniqueOrThrow: vi.fn().mockResolvedValue({ enabled: true }) },
+  };
   const transaction = vi.fn(
     async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
   );
@@ -49,6 +53,7 @@ function harness(kind = "fixture_change") {
       playerName: null,
       team: null,
       fixture: {
+        competitionId: id,
         homeTeam: { name: "Home", shortName: null },
         awayTeam: { name: "Away", shortName: null },
         competition: { slug: "test" },

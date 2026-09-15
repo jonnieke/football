@@ -21,6 +21,8 @@ export interface FixtureChangeJob {
   fixtureId: string;
   previousStateId: string;
   currentStateId: string;
+  /** Immutable time of the preceding successful source-aware fixture poll. */
+  previousObservedAt?: string | undefined;
 }
 
 export interface ContentGenerationJob {

@@ -70,10 +70,7 @@ async function poll(): Promise<void> {
       where: { enabled: true, source: "api-football" },
       select: { sourceId: true, season: true },
     });
-    if (enabled.length === 0)
-      throw new Error(
-        "No enabled API-Football competitions; seed or configure competitions before polling",
-      );
+    // All leagues paused is a valid idle configuration, not a worker failure.
     const now = new Date();
     const tracked = await prisma.fixture.findMany({
       where: {

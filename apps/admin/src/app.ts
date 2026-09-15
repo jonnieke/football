@@ -4,9 +4,12 @@ import {
   recipientChangeSchema,
   contentApprovalSchema,
   ContentApprovalConflict,
+  competitionChangeSchema,
+  CompetitionConflict,
 } from "@fcp/database";
 import { adminAuth, secret, sendLogin, type AuthRedis } from "./auth.js";
 import type { AdminConfig } from "./config.js";
+import { liveFeedQuery } from "./live-feed.js";
 import { page, operationsStylesheet, browserScript } from "./ui.js";
 
 export interface RecipientStore {
@@ -27,6 +30,13 @@ export function buildAdmin(deps: {
   redis: AuthRedis;
   store: RecipientStore;
   dashboard?: () => Promise<unknown>;
+  liveFeed?: (after?: string) => Promise<unknown>;
+  matchEmails?: () => Promise<unknown>;
+  competitions?: {
+    list(after?: string): Promise<unknown>;
+    change(input: unknown, actor: string): Promise<unknown>;
+    history(): Promise<unknown>;
+  };
   content?: {
     list(after?: string): Promise<unknown>;
     approve(input: unknown, actor: string): Promise<unknown>;
@@ -194,6 +204,12 @@ export function buildAdmin(deps: {
         readCookie(request.headers.cookie, sessionName),
       ),
     }));
+    secured.get("/api/live-feed", async (request) => {
+      if (!deps.liveFeed)
+        throw new HttpError(503, "Live feed is not configured");
+      const { after } = liveFeedQuery.parse(request.query);
+      return deps.liveFeed(after);
+    });
     secured.get("/api/content/drafts", async (request) => {
       if (!deps.content)
         throw new HttpError(503, "Content approval is not configured");
@@ -202,6 +218,36 @@ export function buildAdmin(deps: {
         .strict()
         .parse(request.query);
       return { items: await deps.content.list(after) };
+    });
+    secured.get("/api/competitions", async (request) => {
+      if (!deps.competitions)
+        throw new HttpError(503, "League controls are not configured");
+      const { after } = z
+        .object({ after: z.uuid().optional() })
+        .strict()
+        .parse(request.query);
+      return { items: await deps.competitions.list(after) };
+    });
+    secured.get("/api/competitions/history", async () => {
+      if (!deps.competitions)
+        throw new HttpError(503, "League controls are not configured");
+      return { items: await deps.competitions.history() };
+    });
+    secured.post("/api/competitions", async (request) => {
+      if (!deps.competitions)
+        throw new HttpError(503, "League controls are not configured");
+      const actor = await auth.identity(
+        readCookie(request.headers.cookie, sessionName),
+      );
+      if (!actor) throw new HttpError(401, "Session expired");
+      const input = competitionChangeSchema.parse(request.body);
+      try {
+        return { item: await deps.competitions.change(input, actor) };
+      } catch (error) {
+        if (error instanceof CompetitionConflict)
+          throw new HttpError(409, error.message);
+        throw error;
+      }
     });
     secured.get("/api/content/history", async () => {
       if (!deps.content)
@@ -230,6 +276,11 @@ export function buildAdmin(deps: {
         .strict()
         .parse(request.query);
       return { items: await store.list(query.after) };
+    });
+    secured.get("/api/match-emails", async () => {
+      if (!deps.matchEmails)
+        throw new HttpError(503, "Match email status is not configured");
+      return { items: await deps.matchEmails() };
     });
     secured.get("/api/dashboard", async () => {
       if (!deps.dashboard)

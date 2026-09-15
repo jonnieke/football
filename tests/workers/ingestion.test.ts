@@ -455,13 +455,22 @@ suite(
         ]);
         expect(new Set(content.map((item) => item.eventId)).size).toBe(3);
         expect(
-          content.every(
-            (item) =>
-              item.status === "draft" &&
-              item.publicationSequence === null &&
-              item.publishedAt === null,
-          ),
+          content
+            .filter((item) => item.event.eventType !== "match_finished")
+            .every(
+              (item) =>
+                item.status === "draft" &&
+                item.publicationSequence === null &&
+                item.publishedAt === null,
+            ),
         ).toBe(true);
+        const liveFinish = content.find(
+          (item) => item.event.eventType === "match_finished",
+        )!;
+        expect(liveFinish.status).toBe("published");
+        expect(liveFinish.publicationSequence).not.toBeNull();
+        expect(liveFinish.publishedAt).not.toBeNull();
+        expect(await prisma.contentApproval.count()).toBe(0);
         expect(
           content.find((item) => item.event.eventType === "match_finished")
             ?.standardText,
@@ -493,6 +502,20 @@ suite(
         expect(
           await prisma.workOutbox.count({ where: { completedAt: null } }),
         ).toBe(0);
+        // A fully paused configuration is healthy idle and consumes no quota.
+        await prisma.competition.updateMany({ data: { enabled: false } });
+        const beforeIdle = await successes();
+        await waitFor(
+          "paused configuration picked up",
+          async () => (await successes()) >= beforeIdle + 2,
+        );
+        const callsWhileIdle = requests.length;
+        const idlePolls = await successes();
+        await waitFor(
+          "repeated idle polls",
+          async () => (await successes()) >= idlePolls + 2,
+        );
+        expect(requests.length).toBe(callsWhileIdle);
       }
       expect(unexpected).toEqual([]);
       expect(requests.length).toBeLessThanOrEqual(80);

@@ -10,6 +10,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/generated/**",
       "**/coverage/**",
+      "**/.sandbox-replay/**",
       "eslint.config.js",
     ],
   },
@@ -17,11 +18,18 @@ export default tseslint.config(
   ...tseslint.configs.recommendedTypeChecked,
   prettier,
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: {
       parserOptions: { projectService: false },
-      globals: { process: "readonly", console: "readonly" },
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        URL: "readonly",
+        fetch: "readonly",
+        AbortSignal: "readonly",
+      },
     },
   },
   {

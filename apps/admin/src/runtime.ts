@@ -4,11 +4,15 @@ import {
   listAlertRecipients,
   listDraftContent,
   approveContent,
+  listCompetitions,
+  changeCompetition,
+  competitionHistory,
 } from "@fcp/database";
 import { createAdminRedis } from "./redis.js";
 import { adminConfig } from "./config.js";
 import { buildAdmin } from "./app.js";
 import { dashboardReader } from "./dashboard.js";
+import { liveFeedReader } from "./live-feed.js";
 import { fileURLToPath } from "node:url";
 
 /** Shared initialization for local listening and serverless invocation. */
@@ -39,6 +43,12 @@ export async function initializeAdmin() {
       redis,
       acquireRedis: () => connections.acquire(),
       dashboard: dashboardReader(prisma, redis, config.QUEUE_PREFIX),
+      liveFeed: liveFeedReader(prisma),
+      competitions: {
+        list: (after) => listCompetitions(prisma, after),
+        change: (input, actor) => changeCompetition(prisma, input, actor),
+        history: () => competitionHistory(prisma),
+      },
       content: {
         list: (after) => listDraftContent(prisma, after),
         approve: (input, actor) => approveContent(prisma, input, actor),
@@ -54,6 +64,20 @@ export async function initializeAdmin() {
             },
           }),
       },
+      matchEmails: () =>
+        prisma.matchEmailDelivery.findMany({
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 50,
+          select: {
+            id: true,
+            email: true,
+            subject: true,
+            status: true,
+            attempts: true,
+            createdAt: true,
+            lastErrorCode: true,
+          },
+        }),
       store: {
         list: (after) => listAlertRecipients(prisma, after),
         change: (input) => changeAlertRecipient(prisma, input),

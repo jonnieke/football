@@ -75,6 +75,10 @@ try {
   );
   assert.equal(config.runtime, "nodejs24.x");
   assert.equal(config.handler, "dist/handler.js");
+  if (project !== "apps/admin") {
+    assert.equal(config.maxDuration, 60);
+    assert.equal(config.supportsResponseStreaming, true);
+  }
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) =>
       /^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|HOME)$/i.test(key),

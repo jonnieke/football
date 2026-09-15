@@ -1,0 +1,12 @@
+FROM postgres:17-alpine
+
+RUN apk add --no-cache nodejs
+
+WORKDIR /app
+COPY docker/backup-supabase.mjs /app/backup-supabase.mjs
+COPY docker/backup-health.mjs /app/backup-health.mjs
+USER 1000:1000
+
+HEALTHCHECK --interval=15m --timeout=5s --start-period=10m --retries=2 CMD node /app/backup-health.mjs
+
+ENTRYPOINT ["node", "/app/backup-supabase.mjs"]

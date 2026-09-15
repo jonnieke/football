@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fork } from "node:child_process";
 import { URL, fileURLToPath } from "node:url";
@@ -15,7 +16,8 @@ const names = [
   "football-ingestion",
 ];
 const origin = "https://v3.football.api-sports.io";
-const limit = 12;
+const liveTrial = process.argv.includes("--live-trial");
+const limit = liveTrial ? 24 : 12;
 const ca = "C:/Users/peterson/Downloads/prod-ca-2021.crt";
 const safeCodes = new Set([
   "ECONNREFUSED",
@@ -259,6 +261,43 @@ async function supervise(verifyOnly = false) {
       )
     ).rows;
     const before = await counts();
+    if (liveTrial) {
+      const directory = new URL("packages/database/prisma/migrations/", root);
+      const expected = readdirSync(directory)
+        .filter((name) => /^\d/.test(name))
+        .sort();
+      const applied = (
+        await client.query(
+          "SELECT migration_name, checksum, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY migration_name",
+        )
+      ).rows;
+      if (
+        expected.length !== 9 ||
+        applied.length !== expected.length ||
+        applied.some(
+          (row, i) =>
+            row.migration_name !== expected[i] ||
+            !row.finished_at ||
+            row.rolled_back_at ||
+            row.checksum !==
+              createHash("sha256")
+                .update(
+                  readFileSync(
+                    new URL(`${expected[i]}/migration.sql`, directory),
+                  ),
+                )
+                .digest("hex"),
+        )
+      )
+        throw Object.assign(new Error(), { code: "TARGET_GUARD" });
+      const email = (
+        await client.query(
+          "SELECT (SELECT count(*)::int FROM alert_recipients WHERE enabled AND match_alerts) AS recipients, (SELECT count(*)::int FROM match_email_deliveries WHERE status='pending') AS pending",
+        )
+      ).rows[0];
+      if (email.recipients || email.pending)
+        throw Object.assign(new Error(), { code: "TARGET_GUARD" });
+    }
     if (
       leagues.length !== 1 ||
       leagues[0].source !== "api-football" ||
@@ -275,6 +314,7 @@ async function supervise(verifyOnly = false) {
         "delayed",
         "prioritized",
         "waiting-children",
+        "failed",
       ]) {
         if (await redis.exists(`bull:${queue}:${key}`))
           throw Object.assign(new Error(), { code: "EXISTING_WORK" });
@@ -292,6 +332,8 @@ async function supervise(verifyOnly = false) {
       before,
       max_provider_requests: limit,
       run_window_seconds: 90,
+      automatic_publication_possible: liveTrial,
+      email_sender_started: false,
     });
     for (const key of ["sslmode", "sslcert", "sslkey", "sslrootcert", "ssl"])
       db.searchParams.delete(key);
@@ -303,7 +345,7 @@ async function supervise(verifyOnly = false) {
       NODE_EXTRA_CA_CERTS: ca,
       NODE_ENV: "production",
       LOG_LEVEL: "info",
-      LIVE_POLL_INTERVAL_SECONDS: "300",
+      LIVE_POLL_INTERVAL_SECONDS: liveTrial ? "30" : "300",
       SCHEDULE_POLL_INTERVAL_SECONDS: "86400",
       API_FOOTBALL_MAX_RETRIES: "0",
       API_FOOTBALL_TIMEOUT_MS: "8000",
@@ -313,13 +355,17 @@ async function supervise(verifyOnly = false) {
     delete childEnv.NODE_TLS_REJECT_UNAUTHORIZED;
     delete childEnv.NODE_OPTIONS;
     const start = (name) => {
-      const p = fork(fileURLToPath(import.meta.url), ["--child", name], {
-        cwd: fileURLToPath(root),
-        env: childEnv,
-        execArgv: [],
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
-        windowsHide: true,
-      });
+      const p = fork(
+        fileURLToPath(import.meta.url),
+        ["--child", name, ...(liveTrial ? ["--live-trial"] : [])],
+        {
+          cwd: fileURLToPath(root),
+          env: childEnv,
+          execArgv: [],
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
+          windowsHide: true,
+        },
+      );
       const item = {
         process: p,
         name,
@@ -400,6 +446,7 @@ async function supervise(verifyOnly = false) {
     }
     start("football-ingestion");
     let run;
+    const successfulPolls = new Set();
     while (Date.now() - started.getTime() < 90000) {
       await delay(1500);
       run = (
@@ -408,12 +455,18 @@ async function supervise(verifyOnly = false) {
         )
       ).rows[0];
       if (run?.id === baselineId) run = undefined;
-      if (run && run.status !== "running") break;
+      if (run && run.status !== "running") {
+        if (run.status !== "succeeded") break;
+        successfulPolls.add(run.id);
+        if (!liveTrial || successfulPolls.size >= 2) break;
+      }
       if (failed) throw Object.assign(new Error(), { code: "CHILD_FAILED" });
     }
     if (!run || run.status === "running")
       throw Object.assign(new Error(), { code: "POLL_TIMEOUT" });
     report({ poll: run });
+    if (liveTrial && successfulPolls.size < 2)
+      throw Object.assign(new Error(), { code: "POLL_TIMEOUT" });
     if (run.status !== "succeeded")
       throw Object.assign(new Error(), { code: "POLL_FAILED" });
     // Allow the durable outbox/consumers a short drain window; never create fake jobs.
@@ -423,6 +476,12 @@ async function supervise(verifyOnly = false) {
       provider_health: await redis.get("health:provider:api-football"),
       after: await counts(),
       provider_requests: requestCount,
+      successful_polls: successfulPolls.size,
+      publication_status: (
+        await client.query(
+          "SELECT status,count(*)::int AS count FROM content_items GROUP BY status",
+        )
+      ).rows,
     });
   } catch (error) {
     failed = true;
@@ -449,6 +508,7 @@ try {
   if (process.argv[2] === "--child") await child(process.argv[3]);
   else if (process.argv[2] === "--self-test") await selfTest();
   else if (process.argv[2] === "--run") await supervise();
+  else if (process.argv[2] === "--live-trial") await supervise();
   else if (process.argv[2] === "--verify") await supervise(true);
   else
     report({

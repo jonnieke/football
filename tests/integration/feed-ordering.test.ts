@@ -3,10 +3,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { v7 as uuidv7 } from "uuid";
 import {
   FeedRepository,
+  createApiKeyMaterial,
   createCanonicalEvent,
   persistNormalizedFixture,
 } from "@fcp/database";
-import { parseCursor } from "@fcp/shared";
+import { parseCursor, createLogger, loadConfig } from "@fcp/shared";
+import { buildApp } from "@fcp/api";
+import { acquireStreamLease, bounded } from "../../apps/api/src/feed-stream.js";
 import type { NormalizedFixture } from "@fcp/football-core";
 import { createTestResources } from "../support/resources.js";
 
@@ -70,11 +73,139 @@ suite("PostgreSQL commit-ordered feed and cursor recovery", () => {
     };
   }
 
+  it("atomically limits concurrent streams and releases a single lease", async () => {
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 6 }, () =>
+        acquireStreamLease(resources.redis, "lease-test", "test"),
+      ),
+    );
+    const accepted = attempts.filter((result) => result.status === "fulfilled");
+    expect(accepted).toHaveLength(3);
+    expect(
+      attempts.filter((result) => result.status === "rejected"),
+    ).toHaveLength(3);
+    await accepted[0]!.value();
+    const replacement = await acquireStreamLease(
+      resources.redis,
+      "lease-test",
+      "test",
+    );
+    await Promise.all([
+      replacement(),
+      ...accepted.slice(1).map((result) => result.value()),
+    ]);
+  });
+
+  it("streams a new publication over HTTP and replays missed reports on reconnect", async () => {
+    const material = await createApiKeyMaterial();
+    const client = await resources.prisma.apiClient.create({
+      data: {
+        id: uuidv7(),
+        name: "Stream test",
+        slug: "stream-test",
+        keyPrefix: material.prefix,
+        keyHash: material.hash,
+        rateLimit: 1000,
+      },
+    });
+    const app = await buildApp({
+      config: loadConfig({
+        NODE_ENV: "test",
+        DATABASE_URL: resources.databaseUrl,
+        REDIS_URL: resources.redisUrl,
+        API_FOOTBALL_BASE_URL: "https://example.invalid",
+        API_FOOTBALL_KEY: "unused",
+        CURSOR_SIGNING_SECRET: secret,
+      }),
+      prisma: resources.prisma,
+      redis: resources.redis,
+      logger: createLogger("silent"),
+    });
+    const controllers: AbortController[] = [];
+    try {
+      const origin = await app.listen({ host: "127.0.0.1", port: 0 });
+      const headers = { authorization: `Bearer ${material.plaintext}` };
+      expect((await fetch(`${origin}/v1/feed/stream`)).status).toBe(401);
+      expect(
+        (await fetch(`${origin}/v1/feed/stream?after=invalid`, { headers }))
+          .status,
+      ).toBe(400);
+      expect(
+        (await fetch(`${origin}/v1/feed/stream?token=not-allowed`, { headers }))
+          .status,
+      ).toBe(400);
+      async function connect(after?: string) {
+        const controller = new AbortController();
+        controllers.push(controller);
+        const response = await fetch(`${origin}/v1/feed/stream?channel=test`, {
+          headers: { ...headers, ...(after ? { "Last-Event-ID": after } : {}) },
+          signal: controller.signal,
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain(
+          "text/event-stream",
+        );
+        expect(response.headers.get("cache-control")).toContain("no-store");
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let pending = "";
+        return {
+          controller,
+          async event(name: string) {
+            while (true) {
+              const end = pending.indexOf("\n\n");
+              if (end >= 0) {
+                const frame = pending.slice(0, end);
+                pending = pending.slice(end + 2);
+                if (frame.includes(`event: ${name}\n`)) return frame;
+                continue;
+              }
+              const chunk = await bounded(reader.read(), 10000);
+              if (chunk.done) throw new Error(`Stream ended before ${name}`);
+              pending += decoder.decode(chunk.value as Uint8Array, {
+                stream: true,
+              });
+            }
+          },
+        };
+      }
+      const first = await connect();
+      const ready = await first.event("ready");
+      const start = /^id: (.+)$/m.exec(ready)![1]!;
+      const data = await contentData("stream-one");
+      const published = await resources.prisma.contentItem.create({ data });
+      const live = await first.event("feed");
+      expect(live).toContain(published.id);
+      const cursor = /^id: (.+)$/m.exec(live)![1]!;
+      expect(cursor).not.toBe(start);
+      first.controller.abort();
+      const missed = await resources.prisma.contentItem.create({
+        data: await contentData("stream-missed"),
+      });
+      const resumed = await connect(cursor);
+      await resumed.event("ready");
+      const replay = await resumed.event("feed");
+      expect(replay).toContain(missed.id);
+      expect(replay).not.toContain(published.id);
+      await resources.prisma.apiClient.update({
+        where: { id: client.id },
+        data: { revokedAt: new Date() },
+      });
+      expect(await resumed.event("access_revoked")).toContain("UNAUTHORIZED");
+    } finally {
+      for (const controller of controllers) controller.abort();
+      app.server.closeAllConnections();
+      await app.close();
+    }
+  }, 30_000);
+
   it("does not skip a slow transaction whose publication timestamp is earlier", async () => {
     const { prisma } = resources;
     const feed = new FeedRepository(prisma, secret);
-    const empty = await feed.getFeed({ limit: 10 });
-    expect(parseCursor(empty.nextCursor, secret).sequence).toBe("0");
+    const tip = await feed.currentCursor();
+    const empty = await feed.getFeed({ limit: 10, after: tip });
+    expect(empty.items).toEqual([]);
+    expect(empty.nextCursor).toBe(tip);
     const first = {
       ...(await contentData("slow")),
       publishedAt: new Date("2020-01-01T00:00:00Z"),

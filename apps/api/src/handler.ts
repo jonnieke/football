@@ -32,5 +32,33 @@ export default async function handler(
     throw error;
   });
   const app = await application;
-  app.server.emit("request", request, response);
+  // Keep the invocation alive until the streaming response finishes or the
+  // subscriber disconnects, not merely until Fastify accepts the request.
+  if (response.destroyed || response.writableFinished) return;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      response.off("finish", finish);
+      response.off("close", finish);
+      response.off("error", fail);
+    };
+    const finish = () => {
+      cleanup();
+      resolve();
+    };
+    const fail = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    response.once("finish", finish);
+    response.once("close", finish);
+    response.once("error", fail);
+    try {
+      app.server.emit("request", request, response);
+    } catch (error) {
+      cleanup();
+      reject(
+        error instanceof Error ? error : new Error("Request dispatch failed"),
+      );
+    }
+  });
 }

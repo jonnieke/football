@@ -15,6 +15,13 @@ import { v7 as uuidv7 } from "uuid";
 import { ZodError, z } from "zod";
 import "./types.js";
 import { checkedRateLimit, verificationGate } from "./security.js";
+import {
+  acquireStreamLease,
+  bounded,
+  createFeedStream,
+  resumeCursor,
+  streamQuerySchema,
+} from "./feed-stream.js";
 
 interface RedisApi extends RateLimitRedis {
   ping(): Promise<string>;
@@ -70,6 +77,12 @@ export async function buildApp(
   const metrics = new Metrics();
   const feed = new FeedRepository(prisma, config.CURSOR_SIGNING_SECRET);
   const verify = verificationGate(config.API_AUTH_CONCURRENCY);
+  const activeStreams = new Set<ReturnType<typeof createFeedStream>>();
+  let openingStreams = 0;
+  app.addHook("preClose", (done) => {
+    for (const stream of activeStreams) stream.destroy();
+    done();
+  });
 
   await app.register(helmet, { global: true });
   await app.register(swagger, {
@@ -418,6 +431,91 @@ export async function buildApp(
         : { eventType: query.event_type }),
     });
     return { items: result.items, next_cursor: result.nextCursor };
+  });
+
+  app.get("/v1/feed/stream", async (request, reply) => {
+    const query = streamQuerySchema.parse(request.query);
+    const after = resumeCursor(query.after, request.headers["last-event-id"]);
+    if (request.method === "HEAD") return reply.code(405).send();
+    if (activeStreams.size + openingStreams >= 48)
+      throw new AppError(
+        "STREAM_UNAVAILABLE",
+        "This instance is at stream capacity; reconnect later.",
+        503,
+      );
+    const client = request.apiClient!;
+    const scope = {
+      ...(query.channel === undefined ? {} : { channel: query.channel }),
+      ...(query.event_type === undefined
+        ? {}
+        : { eventType: query.event_type }),
+    };
+    openingStreams++;
+    let release: (() => Promise<void>) | undefined;
+    try {
+      try {
+        release = await bounded(
+          acquireStreamLease(redis, client.id, config.QUEUE_PREFIX),
+        );
+      } catch (error) {
+        if (error instanceof AppError && error.statusCode === 429)
+          void reply.header("Retry-After", 20);
+        throw error;
+      }
+      const cursor = after ?? (await bounded(feed.currentCursor(scope)));
+      // Validate signed cursor and scope before committing streaming headers.
+      const first = await bounded(
+        feed.getFeed({ after: cursor, limit: 50, ...scope }),
+      );
+      if (reply.raw.destroyed) return reply;
+      const stream = createFeedStream({
+        feed,
+        cursor,
+        first,
+        scope,
+        stillAuthorized: async () => {
+          const current = await prisma.apiClient.findUnique({
+            where: { id: client.id },
+            select: { status: true, revokedAt: true, keyHash: true },
+          });
+          return (
+            current !== null &&
+            current.status === "enabled" &&
+            current.revokedAt === null &&
+            current.keyHash === client.keyHash
+          );
+        },
+      });
+      activeStreams.add(stream);
+      const releaseLease = release;
+      release = undefined;
+      const disconnect = () => stream.destroy();
+      reply.raw.once("close", disconnect);
+      stream.once("close", () => {
+        reply.raw.off("close", disconnect);
+        activeStreams.delete(stream);
+        void releaseLease().catch(() =>
+          request.log.warn(
+            "Stream lease release failed; expiry will recover it",
+          ),
+        );
+      });
+      return reply
+        .headers({
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store, no-transform",
+          "X-Accel-Buffering": "no",
+        })
+        .send(stream);
+    } finally {
+      openingStreams--;
+      if (release)
+        await release().catch(() =>
+          request.log.warn(
+            "Stream lease release failed; expiry will recover it",
+          ),
+        );
+    }
   });
 
   return app;

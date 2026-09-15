@@ -1,0 +1,18 @@
+FROM node:24-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter '@fcp/football-ingestion...' \
+    --filter '@fcp/outbox-dispatcher...' \
+    --filter '@fcp/event-processor...' \
+    --filter '@fcp/content-generator...' build
+
+FROM node:24-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build --chown=node:node /app /app
+USER node
+CMD ["node", "workers/football-ingestion/dist/index.js"]

@@ -99,7 +99,7 @@ export async function saveCanonicalEvent(
     },
     select: { id: true },
   });
-  await ensureContentWork(tx, created.id);
+  await ensureContentWork(tx, created.id, event.liveObservedAt);
   return { id: created.id, created: true };
 }
 

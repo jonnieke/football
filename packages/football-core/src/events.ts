@@ -21,6 +21,8 @@ const statusEvents: Partial<Record<FixtureState["status"], FootballEventType>> =
   };
 
 export type EventDraft = Omit<NormalizedFootballEvent, "sourceEventId"> & {
+  /** Trusted ingestion observation time, not an asserted event occurrence time. */
+  liveObservedAt?: Date;
   sourceEventId?: string;
   relatedEventId?: string;
 };

@@ -9,6 +9,7 @@ export const recipientSettingsSchema = z
     warnings: z.boolean(),
     critical: z.boolean(),
     recovery: z.boolean(),
+    matchAlerts: z.boolean().default(false),
   })
   .strict();
 const actor = z.string().trim().min(1).max(200);
@@ -41,6 +42,7 @@ const select = {
   warnings: true,
   critical: true,
   recovery: true,
+  matchAlerts: true,
   version: true,
 } as const;
 
@@ -52,6 +54,25 @@ export async function changeAlertRecipient(
   const change = recipientChangeSchema.parse(input);
   return prisma.$transaction(
     async (tx) => {
+      // Serialize subscription changes so the bounded fan-out cannot be exceeded.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('match-email-recipients', 0))`;
+      if (
+        change.action !== "remove" &&
+        change.settings.enabled &&
+        change.settings.matchAlerts
+      ) {
+        const count = await tx.alertRecipient.count({
+          where: {
+            enabled: true,
+            matchAlerts: true,
+            ...(change.action === "update" ? { id: { not: change.id } } : {}),
+          },
+        });
+        if (count >= 100)
+          throw new Error(
+            "At most 100 active match-alert recipients are supported",
+          );
+      }
       if (change.action === "add") {
         const after = await tx.alertRecipient.create({
           data: { id: randomUUID(), ...change.settings },

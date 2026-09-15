@@ -14,6 +14,7 @@ it("normalizes addresses and preserves notification preferences", () => {
   expect(recipientSettingsSchema.parse(settings)).toEqual({
     ...settings,
     email: "alerts@example.com",
+    matchAlerts: false,
   });
 });
 it.each([

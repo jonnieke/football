@@ -18,6 +18,8 @@ function harness(sourceEvents: unknown = [source]) {
     minute: 20,
     homeScore: 0,
     awayScore: 0,
+    sourceEvents: [],
+    capturedAt: new Date("2026-01-01T00:00:00Z"),
   };
   const current = { ...before, id: "current", sourceEvents };
   const fixture = {

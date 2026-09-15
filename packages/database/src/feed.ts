@@ -14,6 +14,24 @@ export class FeedRepository {
     private readonly cursorSecret: string,
   ) {}
 
+  /** Start a live subscription at the committed tip, without replaying history. */
+  public async currentCursor(
+    scope: Pick<FeedQuery, "channel" | "eventType"> = {},
+  ) {
+    const state = await this.prisma.feedPublicationState.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    return createCursor(
+      {
+        epoch: state.epoch,
+        sequence: state.highWater.toString(),
+        channel: scope.channel ?? null,
+        eventType: scope.eventType ?? null,
+      },
+      this.cursorSecret,
+    );
+  }
+
   public async getFeed(
     query: FeedQuery,
   ): Promise<{ items: unknown[]; nextCursor: string }> {

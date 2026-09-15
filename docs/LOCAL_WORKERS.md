@@ -1,5 +1,124 @@
 # Local worker testing on Windows
 
+The local bounded trials below are historical. Since 2026-09-15 17:22 EAT,
+the four football workers run continuously on Google VM `fcp-workers-1`;
+the match email sender remains off. See GOOGLE_CLOUD_WORKERS.md for current
+hosting and verification. Do not start a second local collector against the
+same production Redis/database while the cloud collector is running.
+
+## Corrected worker build — live verification, 2026-09-15 15:48 EAT
+
+Rebuilt all four workers and dependencies with the quiet-poll freshness fix. The
+compiled database package contains immutable `previousObservedAt` handling; SHA256
+`2c0ca06795d36eff99b1a1f997676092448a8f2e247c4e9fa767806beb3b0705`.
+Offline request-cap tests and read-only preflight passed; launch verified nine
+migration checksums, the intended league and empty queues before starting.
+
+The bounded `--live-trial` completed two successful polls:
+
+- 12:48:25.715–12:48:35.523 UTC, three fixtures, zero changed.
+- 12:49:06.276–12:49:15.596 UTC, three fixtures, zero changed.
+- Sixteen provider requests, all HTTP 200; final reported shared allowance 74,437.
+- Live Vercel health returned 200 with every listed service healthy during the run.
+- Records stayed at three fixtures, 16 events, 16 reports (15 drafts, one published).
+  Pending outbox remained zero. No new live event or publication was demonstrated.
+- All four worker processes exited zero. Independent process inspection found none
+  remaining; the ingestion lock was absent. Heartbeats linger until their TTL expires.
+
+This verifies operation of the corrected compiled workers against live services,
+not continuous hosting or new-event latency. The earlier isolated tests verified
+the quiet-period publication behavior. No migration, cloud resource, email sender,
+scheduled startup or ongoing worker service was created. Continuous host selection
+remains an operator decision.
+
+## Automatic-reporting bounded trial — 2026-09-15 15:30 EAT
+
+Rebuilt the four workers and dependencies with Node 24. New `--live-trial` mode
+uses 30 seconds between completed polls, caps provider calls at 24, requires two
+successful cycles, retains the 90-second observation / 145-second hard shutdown
+limits and independently bounded children. It verifies all nine migration checksums,
+Premier League 39 / season 2026, no existing work/worker locks, and no enabled match
+email recipients or pending email jobs. No email sender is started. Eligible fresh
+publication is allowed; this is not the older draft-only test. Offline request-guard
+self-tests and ESLint passed. Existing `--run` behavior is retained for legacy testing.
+
+Results:
+
+- Successful polls at 12:30:35.824–12:30:45.934 UTC and
+  12:31:16.686–12:31:26.494 UTC. Both retrieved three fixtures, zero changed.
+- Sixteen provider requests, all HTTP 200. Last reported allowance 74,465;
+  provider-reported values varied and are not a platform-exclusive usage counter.
+- Vercel `/v1/health` returned 200 with database, Redis, provider and all four
+  workers healthy during the run.
+- Fixtures/events/content remained 3/16/16; pending outbox zero. Post-run state:
+  15 drafts, one published report, one manual approval, feed high-water one.
+  No new publication is demonstrated by this trial; there were no changed fixtures.
+- All four processes exited zero. Independent process inspection found no worker
+  processes; ingestion lock absent. Recent Redis heartbeats linger until expiry and
+  must not be mistaken for continued operation.
+
+This is not 24/7 hosting or a verified source-to-subscriber event test. Fix the
+unchanged-snapshot freshness gap described in AUTOMATIC_REPORTING.md before relying
+on unattended publication. No email was sent and no scheduled startup was installed.
+
+The remaining sections are historical records, not the current rollout status.
+
+## Consumer-only backlog completion — 2026-09-15
+
+With explicit operator approval, processed the 13 remaining `content_generation`
+outbox records from the preceding trial. Read-only preflight found three drafts,
+zero published items/approvals, no paused tasks, and empty Redis job queues. No
+other worker signals or ingestion lock were present.
+
+Started only event-processor, content-generator and outbox-dispatcher, using the
+rebuilt release and existing child HTTP guards (all fetch requests prohibited for
+these workers). No ingestion worker or email sender was started. The supervisor
+allowed 100 seconds before graceful shutdown and a 118-second force cutoff.
+
+Verified at 2026-09-14 22:59:33 UTC / Sep 15 01:59:33 EAT:
+
+- Finished in 35 seconds; all three processes exited with code 0.
+- Pending and paused outbox records: zero.
+- Both queues: zero waiting, active, paused, delayed, prioritized, waiting-child,
+  or failed jobs.
+- Drafts increased from 3 to 16. Published items and approvals remain zero;
+  feed high-water remains zero.
+- Poll count stayed at three. No additional API-Football requests were made.
+- Independent process check found no remaining workers. No records were manually
+  deleted or approvals performed. Normal successful-job completion is not a purge.
+
+The historical 13-task backlog below is now resolved. All workers remain stopped.
+Next is operator review of drafts; live publication still requires a separate,
+specific approval decision.
+
+## Latest bounded draft-first trial — 2026-09-15
+
+Operator-approved limit: 12 provider requests, 90-second monitoring window, 145-second
+supervisor cutoff, no publication or email. Rebuilt all four workers and dependencies
+with Node 24 from release `6549ab6`; offline request-guard tests passed. All seven
+database migrations matched before launch. Preflight found no pending work or other
+worker signals and only Premier League 39, season 2026, enabled.
+
+- Poll `01a0a217-7f73-7767-badb-6a63a223dce0` succeeded, 2026-09-14
+  22:44:04.163–22:44:18.023 UTC (Sep 15, 01:44 EAT).
+- Seven provider requests, all HTTP 200; three fixtures retrieved and changed.
+  Last response reported 74,127 requests remaining (shared provider allowance).
+- After graceful shutdown: three fixtures, 16 canonical events, three content items,
+  all **draft**; zero approvals and feed high-water still zero.
+- Thirteen outbox records remain pending. This was a bounded test, not a full queue
+  drain; do not describe the whole workload as completed. Do not rerun the existing
+  smoke-test launcher unchanged: it intentionally refuses existing pending work.
+- All four child processes exited with code 0. Independent local process check found
+  no remaining test workers; ingestion lock was absent. Heartbeats were still present
+  immediately afterwards and will expire; they do not prove continued operation.
+- No approval action, email sender, fake fixture/job, or continuous service was started.
+  No queue or database data was deleted. The live generated-content path produced
+  drafts, but live approval/feed delivery still needs separately authorized verification.
+
+Next: inspect the three drafts in the dashboard. A separate consumer-only bounded
+drain can process the remaining work without provider polling, after explicit approval
+and inspection of that pending workload. Historical sections below describe earlier runs.
+
 ## Current status
 
 **Update at 17:00 EAT, 2026-09-08:** API `api-1lc3`, dashboard and local workers now use the same Aiven Redis. The second supervised worker test passed and all four child processes exited with code 0. They are not running continuously. Earlier notes below describing the Redis mismatch and an unverified supervisor correction are historical and superseded by this result.

@@ -9,6 +9,7 @@ import {
 import type { FixtureChangeJob } from "@fcp/shared";
 import type { PrismaClient } from "./generated/prisma/client.ts";
 import { resolveSourceEventIdentities } from "./event-identities.js";
+import { markLiveObservations } from "./live-publication.js";
 
 export const sourceSchema = z.array(
   z.object({
@@ -87,11 +88,27 @@ export async function prepareFixtureObservation(
     events.push(resolved.event);
   }
   // Never guess which historical goal a score correction or VAR decision undid.
-  return detectFixtureEvents(
+  const detected = detectFixtureEvents(
     fixture.id,
     previous.id === current.id ? null : state(previous),
     state(current),
     events,
     current.id,
+  );
+  if (previous.sourceEvents === null) return detected;
+  return markLiveObservations(
+    detected,
+    previous,
+    current,
+    new Set(
+      previous.sourceEvents === null
+        ? []
+        : parseSourceEvents(previous.sourceEvents).map(
+            (event) => event.sourceEventId!,
+          ),
+    ),
+    payload.previousObservedAt === undefined
+      ? undefined
+      : new Date(payload.previousObservedAt),
   );
 }

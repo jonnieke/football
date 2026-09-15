@@ -44,6 +44,7 @@ export async function listDraftContent(prisma: PrismaClient, after?: string) {
     eventType: item.event.eventType,
     minute: item.event.minute,
     kickoffAt: item.event.fixture.kickoffAt,
+    fixtureStatus: item.event.fixture.status,
     match: `${item.event.fixture.homeTeam.name} v ${item.event.fixture.awayTeam.name}`,
   }));
 }

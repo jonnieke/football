@@ -17,3 +17,6 @@ export * from "./source-reviews.js";
 export * from "./monitoring.js";
 export * from "./alert-recipients.js";
 export * from "./content-approval.js";
+export * from "./competitions.js";
+export * from "./match-email.js";
+export * from "./match-email-sender.js";

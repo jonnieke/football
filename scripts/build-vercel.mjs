@@ -69,6 +69,9 @@ await writeFile(
       handler: "dist/handler.js",
       launcherType: "Nodejs",
       shouldAddHelpers: true,
+      ...(packageName === "@fcp/api"
+        ? { maxDuration: 60, supportsResponseStreaming: true }
+        : {}),
     },
     null,
     2,

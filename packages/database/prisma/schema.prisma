@@ -12,6 +12,7 @@ model AlertRecipient {
   warnings Boolean @default(true)
   critical Boolean @default(true)
   recovery Boolean @default(true)
+  matchAlerts Boolean @default(false) @map("match_alerts")
   version Int @default(1)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -28,6 +29,30 @@ model AlertRecipientAudit {
   createdAt DateTime @default(now()) @map("created_at")
   @@index([recipientId, createdAt, id])
   @@map("alert_recipient_audit")
+}
+
+model MatchEmailDelivery {
+  id String @id @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  recipientId String @map("recipient_id") @db.Uuid
+  recipientVersion Int @map("recipient_version")
+  email String @db.VarChar(254)
+  subject String @db.VarChar(200)
+  text String
+  status String @default("pending")
+  attempts Int @default(0)
+  availableAt DateTime @default(now()) @map("available_at")
+  expiresAt DateTime @map("expires_at")
+  lockedUntil DateTime? @map("locked_until")
+  leaseToken String? @map("lease_token") @db.Uuid
+  providerId String? @map("provider_id")
+  lastErrorCode String? @map("last_error_code")
+  createdAt DateTime @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  @@unique([eventId, recipientId])
+  @@index([status, availableAt])
+  @@index([createdAt, id])
+  @@map("match_email_deliveries")
 }
 
 model WorkOutbox {
@@ -85,15 +110,30 @@ model Competition {
   country   String?
   season    Int
   enabled   Boolean  @default(true)
+  coverageVersion Int @default(1) @map("coverage_version")
   priority  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   fixtures  Fixture[]
+  audits CompetitionAudit[]
 
   @@unique([source, sourceId, season])
   @@unique([slug, season])
   @@index([enabled, priority])
   @@map("competitions")
+}
+
+model CompetitionAudit {
+  id String @id @db.Uuid
+  competitionId String @map("competition_id") @db.Uuid
+  competition Competition @relation(fields: [competitionId], references: [id])
+  actor String @db.VarChar(254)
+  action String
+  before Json?
+  after Json
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([createdAt(sort: Desc), id(sort: Desc)], map: "competition_audit_created_id_idx")
+  @@map("competition_audit")
 }
 
 model Team {

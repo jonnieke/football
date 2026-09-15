@@ -303,6 +303,14 @@ export async function persistNormalizedFixture(
         fixtureId: fixture.id,
         previousStateId: previousState?.id ?? snapshot.id,
         currentStateId: snapshot.id,
+        // Freeze continuity before lastPolledAt is advanced by this or later polls.
+        // Source-less/legacy observations cannot establish trusted continuity.
+        ...(sourceEvents !== undefined &&
+        previousState?.sourceEvents !== null &&
+        previousState !== undefined &&
+        existing?.lastPolledAt
+          ? { previousObservedAt: existing.lastPolledAt.toISOString() }
+          : {}),
       });
     }
     return {
