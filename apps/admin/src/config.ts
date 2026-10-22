@@ -8,6 +8,7 @@ export function adminConfig(env: NodeJS.ProcessEnv) {
       .default("production"),
     ADMIN_ORIGIN: z.url(),
     ADMIN_EMAILS: z.string().min(1),
+    ADMIN_EMAILS_EXTRA: z.string().default(""),
     ADMIN_NAMESPACE: z.string().regex(/^[a-zA-Z0-9_-]{3,64}$/),
     QUEUE_PREFIX: z
       .string()
@@ -37,7 +38,12 @@ export function adminConfig(env: NodeJS.ProcessEnv) {
     .array(email)
     .min(1)
     .max(50)
-    .safeParse(config.ADMIN_EMAILS.split(","));
+    .safeParse([
+      ...config.ADMIN_EMAILS.split(","),
+      ...(config.ADMIN_EMAILS_EXTRA.trim()
+        ? config.ADMIN_EMAILS_EXTRA.split(",")
+        : []),
+    ]);
   if (!admins.success) throw new Error("Invalid administrator allowlist");
   return {
     ...config,

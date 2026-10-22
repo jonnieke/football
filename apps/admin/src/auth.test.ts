@@ -82,3 +82,16 @@ it("fails closed on missing allowlists and unsafe origins", () => {
     }),
   ).toThrow();
 });
+it("merges optional additional administrator addresses without replacing originals", () => {
+  const config = adminConfig({
+    ADMIN_ORIGIN: "https://admin.example.com",
+    ADMIN_NAMESPACE: "test",
+    ADMIN_EMAILS: "admin@example.com",
+    ADMIN_EMAILS_EXTRA: "NewAdmin@example.com, second@example.com",
+    RESEND_FROM: "login@example.com",
+    RESEND_API_KEY: "test-key-not-real",
+  });
+  expect(config.admins).toEqual(
+    new Set(["admin@example.com", "newadmin@example.com", "second@example.com"]),
+  );
+});
