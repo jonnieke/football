@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MatchEmailSendError, type MatchEmailSend } from "./match-email.js";
+import { MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 
 export function matchEmailConfig(env: NodeJS.ProcessEnv) {
   const parsed = z
@@ -8,21 +9,31 @@ export function matchEmailConfig(env: NodeJS.ProcessEnv) {
       MATCH_EMAIL_ENABLED: z.literal("true"),
       RESEND_FROM: z.email(),
       RESEND_API_KEY: z.string().min(10),
+      ADMIN_EMAILS: z.string().min(1),
     })
     .safeParse(env);
   if (!parsed.success)
     throw new Error("Match email sending is disabled or misconfigured");
-  return parsed.data;
+  const admins = z.array(z.email()).min(1).max(50).safeParse(
+    parsed.data.ADMIN_EMAILS.split(",").map((item) => item.trim().toLowerCase()),
+  );
+  if (!admins.success) throw new Error("Invalid administrator alert allowlist");
+  return { ...parsed.data, admins: new Set(admins.data) };
 }
 
 export function resendMatchSender(
   config: Pick<
     ReturnType<typeof matchEmailConfig>,
-    "RESEND_FROM" | "RESEND_API_KEY"
+    "RESEND_FROM" | "RESEND_API_KEY" | "admins"
   >,
   fetcher: typeof fetch = fetch,
 ): MatchEmailSend {
   return async (message) => {
+    if (
+      !config.admins.has(message.email.toLowerCase()) ||
+      message.text.length > MAX_ADMIN_ALERT_LENGTH
+    )
+      throw new MatchEmailSendError(false);
     const response = await fetcher("https://api.resend.com/emails", {
       method: "POST",
       redirect: "error",

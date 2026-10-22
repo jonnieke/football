@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
+import { MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 
 /** Called only inside the fresh automatic publication transaction, never history replay. */
 export async function enqueueMatchEmails(
@@ -11,6 +12,8 @@ export async function enqueueMatchEmails(
     now: Date;
   },
 ) {
+  if (input.text.length > MAX_ADMIN_ALERT_LENGTH)
+    throw new RangeError("Administrator alert exceeds 150 characters");
   const recipients = await tx.alertRecipient.findMany({
     where: { enabled: true, matchAlerts: true },
     take: 100,
@@ -50,6 +53,7 @@ export class MatchEmailSendError extends Error {
 export async function deliverNextMatchEmail(
   prisma: PrismaClient,
   send: MatchEmailSend,
+  adminEmails: ReadonlySet<string>,
   now = new Date(),
 ) {
   const eligible = {
@@ -93,6 +97,10 @@ export async function deliverNextMatchEmail(
   }
   if (job.expiresAt <= now) return finish("expired", "STALE_ALERT");
   if (job.attempts >= 6) return finish("failed", "RETRY_LIMIT");
+  if (job.text.length > MAX_ADMIN_ALERT_LENGTH)
+    return finish("failed", "MESSAGE_TOO_LONG");
+  if (!adminEmails.has(job.email.toLowerCase()))
+    return finish("cancelled", "NOT_ADMIN_RECIPIENT");
   const recipient = await prisma.alertRecipient.findUnique({
     where: { id: job.recipientId },
   });

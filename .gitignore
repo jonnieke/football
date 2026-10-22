@@ -13,3 +13,6 @@ packages/database/src/generated/
 *.pem
 *.key
 .sandbox-replay/
+supabase/.temp/
+
+.vercel

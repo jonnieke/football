@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { buildAdmin } from "./app.js";
-import { CompetitionConflict } from "@fcp/database";
+import { CompetitionConflict, MatchControlConflict } from "@fcp/database";
 import {
   memoryAuthRedis,
   testAdminConfig,
@@ -33,6 +33,20 @@ function setup() {
     change: vi.fn().mockResolvedValue({ enabled: false }),
     history: vi.fn().mockResolvedValue([]),
   };
+  const apiClients = {
+    list: vi.fn().mockResolvedValue([]),
+    create: vi
+      .fn()
+      .mockResolvedValue({
+        client: { id: "client" },
+        plaintext: "one-time-key",
+      }),
+    revoke: vi.fn().mockResolvedValue({ status: "revoked" }),
+  };
+  const matches = {
+    list: vi.fn().mockResolvedValue({ items: [] }),
+    change: vi.fn().mockResolvedValue({ notificationsEnabled: false }),
+  };
   const liveFeed = vi.fn().mockResolvedValue({ items: [], cursor: "test" });
   const matchEmails = vi.fn().mockResolvedValue([]);
   const app = buildAdmin({
@@ -43,6 +57,8 @@ function setup() {
     dashboard,
     content,
     competitions,
+    apiClients,
+    matches,
     liveFeed,
     matchEmails,
   });
@@ -74,6 +90,7 @@ function setup() {
     return cookies[0]!.split(";")[0]!;
   };
   return {
+    matches,
     matchEmails,
     liveFeed,
     app,
@@ -86,8 +103,73 @@ function setup() {
     dashboard,
     content,
     competitions,
+    apiClients,
   };
 }
+it("protects match selection and rejects stale or forged changes", async () => {
+  const { app, post, login, matches } = setup();
+  const input = {
+    id: "11111111-1111-4111-8111-111111111111",
+    version: 1,
+    enabled: false,
+  };
+  expect((await app.inject("/api/matches?date=2026-09-26")).statusCode).toBe(
+    401,
+  );
+  expect((await post("/api/matches", input)).statusCode).toBe(401);
+  const cookie = await login();
+  expect(
+    (await post("/api/matches", input, cookie, "https://evil.example"))
+      .statusCode,
+  ).toBe(403);
+  expect(
+    (await post("/api/matches", { ...input, actor: "forged" }, cookie))
+      .statusCode,
+  ).toBe(400);
+  expect(
+    (await app.inject({ url: "/api/matches?date=bad", headers: { cookie } }))
+      .statusCode,
+  ).toBe(400);
+  expect((await post("/api/matches", input, cookie)).statusCode).toBe(200);
+  expect(matches.change).toHaveBeenCalledWith(input, "admin@example.com");
+  matches.change.mockRejectedValueOnce(
+    new MatchControlConflict("Reload matches"),
+  );
+  expect((await post("/api/matches", input, cookie)).statusCode).toBe(409);
+});
+it("requires administrator login and same-origin requests for API key management", async () => {
+  const { app, post, login, apiClients } = setup();
+  const create = { action: "create", name: "Ball Mtaani", rateLimit: 120 };
+  expect((await app.inject("/api/clients")).statusCode).toBe(401);
+  expect((await post("/api/clients", create)).statusCode).toBe(401);
+  const cookie = await login();
+  expect(
+    (await post("/api/clients", create, cookie, "https://evil.example"))
+      .statusCode,
+  ).toBe(403);
+  expect(
+    (await post("/api/clients", { ...create, actor: "forged" }, cookie))
+      .statusCode,
+  ).toBe(400);
+  expect(
+    (await app.inject({ url: "/api/clients", headers: { cookie } })).json(),
+  ).toEqual({ items: [] });
+  const issued = await post("/api/clients", create, cookie);
+  expect(issued.statusCode).toBe(200);
+  expect(issued.json<{ plaintext: string }>().plaintext).toBe("one-time-key");
+  expect(apiClients.create).toHaveBeenCalledWith(create);
+  const revoked = await post(
+    "/api/clients",
+    { action: "revoke", id: "11111111-1111-4111-8111-111111111111" },
+    cookie,
+  );
+  expect(revoked.statusCode).toBe(200);
+  expect(apiClients.revoke).toHaveBeenCalledWith(
+    "11111111-1111-4111-8111-111111111111",
+  );
+  await post("/auth/logout", {}, cookie);
+  expect((await post("/api/clients", create, cookie)).statusCode).toBe(401);
+});
 it("protects live updates and validates read positions", async () => {
   const { app, login, post, liveFeed } = setup();
   expect((await app.inject("/api/live-feed")).statusCode).toBe(401);
@@ -277,7 +359,7 @@ it("derives audit actor from session, protects history, and revokes on logout", 
       action: "add",
       actor: "forged",
       settings: {
-        email: "alerts@example.com",
+        email: "admin@example.com",
         enabled: true,
         warnings: true,
         critical: true,
@@ -303,6 +385,27 @@ it("derives audit actor from session, protects history, and revokes on logout", 
     (await app.inject({ url: "/api/recipients", headers: { cookie } }))
       .statusCode,
   ).toBe(401);
+});
+it("does not allow non-administrator addresses to receive match alerts", async () => {
+  const { post, login, store } = setup();
+  const cookie = await login();
+  const result = await post(
+    "/api/recipients",
+    {
+      action: "add",
+      settings: {
+        email: "outside@example.com",
+        enabled: true,
+        warnings: false,
+        critical: false,
+        recovery: false,
+        matchAlerts: true,
+      },
+    },
+    cookie,
+  );
+  expect(result.statusCode).toBe(403);
+  expect(store.change).not.toHaveBeenCalled();
 });
 it("does not consume a link on GET and enforces secure browser confirmation", async () => {
   const { app, post, send } = setup();

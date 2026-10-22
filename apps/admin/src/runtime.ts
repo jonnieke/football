@@ -7,6 +7,11 @@ import {
   listCompetitions,
   changeCompetition,
   competitionHistory,
+  listApiClients,
+  createApiClient,
+  revokeApiClient,
+  listMatchControls,
+  changeMatchControl,
 } from "@fcp/database";
 import { createAdminRedis } from "./redis.js";
 import { adminConfig } from "./config.js";
@@ -44,10 +49,19 @@ export async function initializeAdmin() {
       acquireRedis: () => connections.acquire(),
       dashboard: dashboardReader(prisma, redis, config.QUEUE_PREFIX),
       liveFeed: liveFeedReader(prisma),
+      matches: {
+        list: (date) => listMatchControls(prisma, date),
+        change: (input, actor) => changeMatchControl(prisma, input, actor),
+      },
       competitions: {
         list: (after) => listCompetitions(prisma, after),
         change: (input, actor) => changeCompetition(prisma, input, actor),
         history: () => competitionHistory(prisma),
+      },
+      apiClients: {
+        list: () => listApiClients(prisma),
+        create: (input) => createApiClient(prisma, input),
+        revoke: (id) => revokeApiClient(prisma, id),
       },
       content: {
         list: (after) => listDraftContent(prisma, after),

@@ -5,7 +5,10 @@ vi.mock("./events.js", async (importOriginal) => ({
   ...(await importOriginal<typeof EventModule>()),
   createCanonicalEvent: mocks.canonical,
 }));
-vi.mock("@fcp/content-core", () => ({ generateContent: mocks.generate }));
+vi.mock("@fcp/content-core", () => ({
+  generateContent: mocks.generate,
+  MAX_ADMIN_ALERT_LENGTH: 150,
+}));
 import { processContentDelivery, processFixtureDelivery } from "./delivery.js";
 import { SourceEventHeldError } from "./events.js";
 
@@ -37,15 +40,25 @@ function harness(kind = "fixture_change") {
   };
   const contentItem = { upsert: vi.fn().mockResolvedValue({ id }) };
   const tx = {
-    workOutbox, contentItem,
+    fixture: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({
+        notificationsEnabled: true,
+        notificationChangedAt: null,
+      }),
+    },
+    workOutbox,
+    contentItem,
     $executeRaw: vi.fn().mockResolvedValue(1),
-    competition: { findUniqueOrThrow: vi.fn().mockResolvedValue({ enabled: true }) },
+    competition: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ enabled: true }),
+    },
   };
   const transaction = vi.fn(
     async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
   );
   const footballEvent = {
     findUniqueOrThrow: vi.fn().mockResolvedValue({
+      fixtureId: id,
       eventType: "goal",
       minute: 12,
       homeScore: 1,
@@ -66,7 +79,7 @@ function harness(kind = "fixture_change") {
     footballEvent,
     $transaction: transaction,
   } as unknown as Parameters<typeof processFixtureDelivery>[0];
-  return { prisma, workOutbox, contentItem, transaction, record };
+  return { prisma, workOutbox, contentItem, transaction, record, tx };
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -162,6 +175,27 @@ describe("fixture delivery checkpoint recovery", () => {
 });
 
 describe("content completion transaction", () => {
+  it("keeps a fresh alert unpublished when its match is unchecked", async () => {
+    const { prisma, workOutbox, record, contentItem, tx } =
+      harness("content_generation");
+    workOutbox.findUniqueOrThrow.mockResolvedValue({
+      ...record,
+      payload: { eventId: id, liveObservedAt: new Date().toISOString() },
+    });
+    tx.fixture.findUniqueOrThrow.mockResolvedValue({
+      notificationsEnabled: false,
+      notificationChangedAt: null,
+    });
+    await processContentDelivery(prisma, { outboxId: id, eventId: id }, 150);
+    expect(contentItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: "draft",
+          publishedAt: null,
+        }) as unknown,
+      }),
+    );
+  });
   it("writes content and completion in one transaction", async () => {
     const { prisma, transaction, contentItem, workOutbox } =
       harness("content_generation");

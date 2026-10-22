@@ -23,6 +23,8 @@ export interface GeneratedContent {
   standardText: string;
 }
 
+export const MAX_ADMIN_ALERT_LENGTH = 150;
+
 const labels: Partial<Record<FootballEventType, string>> = {
   goal: "GOAL",
   own_goal: "OWN GOAL",
@@ -135,7 +137,7 @@ export function generateContent(
     channel: context.competitionSlug,
     contentType: "live_alert",
     priority: priority(context.eventType),
-    shortText: compact(context, shortMaxLength),
+    shortText: compact(context, Math.min(shortMaxLength, MAX_ADMIN_ALERT_LENGTH)),
     standardText: render(context, false),
   };
 }

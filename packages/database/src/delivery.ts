@@ -1,11 +1,12 @@
 import type { EventDraft } from "@fcp/football-core";
-import { generateContent } from "@fcp/content-core";
+import { generateContent, MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 import type { FixtureChangeJob, ContentGenerationJob } from "@fcp/shared";
 import { v7 as uuidv7, validate as isUuid } from "uuid";
 import type { PrismaClient } from "./generated/prisma/client.ts";
 import { createCanonicalEvent, SourceEventHeldError } from "./events.js";
 import { isFreshForPublication } from "./live-publication.js";
 import { enqueueMatchEmails } from "./match-email.js";
+import { matchAllowsPublication } from "./match-controls.js";
 import {
   checkpointEvents,
   completeWork,
@@ -153,8 +154,15 @@ export async function processContentDelivery(
         select: { enabled: true },
       });
       const now = new Date();
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`match-notifications:${event.fixtureId}`}, 0))`;
+      const matchSettings = await tx.fixture.findUniqueOrThrow({
+        where: { id: event.fixtureId },
+        select: { notificationsEnabled: true, notificationChangedAt: true },
+      });
       const publish =
-        coverage.enabled && isFreshForPublication(liveObservedAt, now);
+        coverage.enabled &&
+        matchAllowsPublication(matchSettings, liveObservedAt) &&
+        isFreshForPublication(liveObservedAt, now);
       const item = await tx.contentItem.upsert({
         where: {
           eventId_channel_contentType: {
@@ -177,10 +185,12 @@ export async function processContentDelivery(
         item.status === "published" &&
         item.publishedAt?.getTime() === now.getTime()
       ) {
+        if (generated.shortText.length > MAX_ADMIN_ALERT_LENGTH)
+          throw new RangeError("Administrator alert exceeds 150 characters");
         await enqueueMatchEmails(tx, {
           eventId,
-          subject: `Football: ${generated.shortText}`,
-          text: generated.standardText,
+          subject: "Live football alert",
+          text: generated.shortText,
           now,
         });
       }

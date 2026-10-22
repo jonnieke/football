@@ -52,6 +52,13 @@ describe("deterministic content generation", () => {
     expect(generateContent(goal, 160).shortText).toContain("2-1");
   });
 
+  it("never exceeds the 150-character administrator alert limit even with a legacy 160 setting", () => {
+    const content = generateContent({ ...goal, playerName: "A very long player name that must not make the alert oversized" }, 160);
+    expect(content.shortText.length).toBeLessThanOrEqual(150);
+    expect(content.shortText).toContain("GOAL");
+    expect(content.shortText).toContain("2-1");
+  });
+
   it("uses short team names before dropping essential information", () => {
     const content = generateContent(goal, 55);
     expect(content.shortText.length).toBeLessThanOrEqual(55);

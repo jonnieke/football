@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-IMAGE="fcp-workers:2026-09-15-quiet-fix"
+IMAGE="${FCP_WORKER_IMAGE:-fcp-workers:2026-09-15-quiet-fix}"
 PRIVATE_DIR="${FCP_PRIVATE_DIR:-/var/lib/fcp}"
 ENV_FILE="$PRIVATE_DIR/worker.env"
 CA_FILE="$PRIVATE_DIR/supabase-ca.crt"

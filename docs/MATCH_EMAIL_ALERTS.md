@@ -1,21 +1,24 @@
 # Automatic match email alerts
 
-The agreed delivery sequence is dashboard, partner API, then email. All three
-implementations are built. Admin controls and database migrations went live on
-2026-09-15; partner streaming is also deployed, but persistent senders remain stopped.
+The intended product is a private administrator alert service, not a public football
+website. Admin controls and database migrations went live on 2026-09-15. At the
+last verified check, persistent match-email sending was stopped; its current VM
+service state has not been confirmed. Activate only after the administrator
+allowlist, sender configuration, and one-inbox delivery check are verified.
 One labelled test email was accepted by Resend; inbox receipt is unconfirmed.
 See [release evidence](RELEASE_2026-09-15.md). Ongoing sending remains disabled.
 
 ## Administrator controls
 
-In **Alert recipients**, add/edit an address and explicitly check **Match alerts**.
-The recipient must also be **Enabled**. Existing recipients default to match alerts
-off. System warnings/critical/recovery preferences are separate and their sender
-is not implemented by this change. Add only recipients who agreed to receive alerts.
+In **Administrator alert inboxes**, add/edit an address approved in `ADMIN_EMAILS`
+and explicitly check **Match alerts**. The recipient must also be **Enabled**.
+Existing recipients default to match alerts off. The sender independently rejects
+non-admin addresses, including ones queued before this restriction. System
+warnings/critical/recovery preferences are separate; their sender is not active.
 
 Changes are audited, use optimistic version checks, and retain the existing
 approved-admin session and same-origin protection. Maximum 100 active match-alert
-recipients. An edit (including a preference edit), removal, or disable cancels queued
+inboxes. An edit (including a preference edit), removal, or disable cancels queued
 jobs from the previous recipient version when the sender next checks them. A send
 already in progress cannot be recalled. New addresses receive future events only.
 
@@ -23,7 +26,7 @@ already in progress cannot be recalled. New addresses receive future events only
 status, and safe failure code. Refresh manually. `accepted` means the email provider
 accepted the request, not confirmed inbox delivery. Bounce/complaint webhooks,
 recipient self-service unsubscribe and public mailing-list signup are not included;
-this first version is an administrator-managed, consenting operational audience.
+this is an administrator-only operational audience.
 
 ## Pipeline and reliability
 
@@ -32,7 +35,9 @@ Drafts, manual historical approval, and old content do not enqueue emails. Enabl
 league coverage controls automatic publication; already queued notifications remain
 eligible if a league is subsequently paused. Pause a recipient to stop their queue.
 
-Jobs contain an immutable subject/body/address snapshot. One event/recipient pair
+Jobs contain an immutable subject/body/address snapshot. The email body contains
+the generated alert, capped at 150 characters; the subject is a fixed short label.
+One event/recipient pair
 has one durable job, independent of content channel variants. Email network calls
 happen in a separate sender, never in API requests or publication transactions.
 Resend/network failures do not hold up the live feed; a database failure in the
@@ -61,7 +66,9 @@ Deploy the migration before new admin/content-worker code. Retain existing backu
 and rollback procedures; do not drop the delivery ledger during a rollback.
 
 The opt-in process is `pnpm alerts:matches --run`. It requires explicitly supplied
-`DATABASE_URL`, `MATCH_EMAIL_ENABLED=true`, `RESEND_FROM`, and `RESEND_API_KEY`.
+`DATABASE_URL`, `MATCH_EMAIL_ENABLED=true`, `ADMIN_EMAILS`, `RESEND_FROM`, and
+`RESEND_API_KEY`. `ADMIN_EMAILS` must match the approved administrator address
+allowlist; sending fails closed without it.
 It does not load dotenv files implicitly and is not part of `pnpm dev` or Vercel
 request handling. Running `pnpm alerts:matches` without `--run` sends nothing.
 Keep credentials server-side, never in browser configuration or source control.
@@ -74,9 +81,8 @@ the live API remains the primary low-latency integration channel.
 
 Before production: review the migration, verify backups, test sender-domain delivery
 to one consenting recipient, set sending budgets and supervision, and verify the
-admin accepted/failure records. For public-scale email, add self-service unsubscribe,
-verified bounce/complaint suppression, delivery webhooks, retention policy, and shared
-provider rate limiting. No scheduled task or production process was created here.
+admin accepted/failure records. No public subscriber or mailing-list service is
+in scope. No scheduled task or production process was created here.
 
 ## Verification
 

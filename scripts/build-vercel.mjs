@@ -42,6 +42,8 @@ pnpm([
   "deploy",
   "--legacy",
   "--prod",
+  "--config.node-linker=hoisted",
+  "--ignore-scripts",
   "--config.auto-install-peers=false",
   "--config.resolve-peers-from-workspace-root=false",
   destination,

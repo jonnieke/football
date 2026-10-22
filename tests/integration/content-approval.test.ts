@@ -12,6 +12,8 @@ import {
   FeedRepository,
   prepareFixtureObservation,
   processFixtureDelivery,
+  changeMatchControl,
+  listMatchControls,
 } from "@fcp/database";
 
 const suite =
@@ -72,6 +74,7 @@ suite("draft-first content and atomic administrator approval", () => {
   };
   it("keeps generated drafts out of the feed and publishes once under concurrent approval", async () => {
     const { prisma } = resources;
+    await prisma.competition.updateMany({ data: { enabled: true } });
     const item = await generate(10);
     expect(item).toMatchObject({
       status: "draft",
@@ -235,6 +238,79 @@ suite("draft-first content and atomic administrator approval", () => {
       ).status,
     ).toBe("draft");
   });
+  it("persists match switches and suppresses disabled and pre-resume observations", async () => {
+    const { prisma } = resources;
+    await prisma.competition.updateMany({ data: { enabled: true } });
+    const selected = (await listMatchControls(prisma, "2026-01-01")).items.find(
+      (item) => item.id === fixtureId,
+    )!;
+    expect(selected.notificationsEnabled).toBe(true);
+    const off = await changeMatchControl(
+      prisma,
+      { id: fixtureId, version: selected.notificationVersion, enabled: false },
+      "admin@example.com",
+    );
+    expect(
+      (await listMatchControls(prisma, "2026-01-01")).items.find(
+        (item) => item.id === fixtureId,
+      )?.notificationsEnabled,
+    ).toBe(false);
+    await expect(
+      changeMatchControl(
+        prisma,
+        { id: fixtureId, version: selected.notificationVersion, enabled: true },
+        "admin@example.com",
+      ),
+    ).rejects.toThrow("Match settings changed");
+    const pausedAt = new Date();
+    const paused = await createCanonicalEvent(prisma, {
+      fixtureId,
+      eventType: "goal",
+      minute: 401,
+      liveObservedAt: pausedAt,
+    });
+    await processContentDelivery(prisma, { eventId: paused.id }, 150);
+    expect(
+      (
+        await prisma.contentItem.findFirstOrThrow({
+          where: { eventId: paused.id },
+        })
+      ).status,
+    ).toBe("draft");
+    const delayed = await createCanonicalEvent(prisma, {
+      fixtureId,
+      eventType: "goal",
+      minute: 402,
+      liveObservedAt: new Date(pausedAt.getTime() - 1000),
+    });
+    await changeMatchControl(
+      prisma,
+      { id: fixtureId, version: off.notificationVersion, enabled: true },
+      "admin@example.com",
+    );
+    await processContentDelivery(prisma, { eventId: delayed.id }, 150);
+    expect(
+      (
+        await prisma.contentItem.findFirstOrThrow({
+          where: { eventId: delayed.id },
+        })
+      ).status,
+    ).toBe("draft");
+    const fresh = await createCanonicalEvent(prisma, {
+      fixtureId,
+      eventType: "goal",
+      minute: 403,
+      liveObservedAt: new Date(),
+    });
+    await processContentDelivery(prisma, { eventId: fresh.id }, 150);
+    expect(
+      (
+        await prisma.contentItem.findFirstOrThrow({
+          where: { eventId: fresh.id },
+        })
+      ).status,
+    ).toBe("published");
+  });
   it("starts with the latest 50, catches up without gaps and resets changed histories", async () => {
     const { prisma } = resources;
     const readLive = liveFeedReader(prisma);
@@ -279,6 +355,7 @@ suite("draft-first content and atomic administrator approval", () => {
   });
   it("rejects stale review fingerprints and rolls back if audit recording fails", async () => {
     const { prisma } = resources;
+    await prisma.competition.updateMany({ data: { enabled: true } });
     const item = await generate(20);
     const original = (await listDraftContent(prisma)).find(
       (draft) => draft.id === item.id,

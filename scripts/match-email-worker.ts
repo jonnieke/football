@@ -9,7 +9,7 @@ import {
 // No implicit dotenv loading, no inclusion in `pnpm dev`, and no default sending.
 if (process.argv.slice(2).join(" ") !== "--run") {
   console.log(
-    "Sender not started. Requires --run and explicit MATCH_EMAIL_ENABLED=true configuration.",
+    "Sender not started. Requires --run, MATCH_EMAIL_ENABLED=true, and an administrator email allowlist.",
   );
 } else {
   let prisma: ReturnType<typeof createPrisma> | undefined;
@@ -28,7 +28,7 @@ if (process.argv.slice(2).join(" ") !== "--run") {
     const send = resendMatchSender(config);
     while (!stopping) {
       try {
-        const status = await deliverNextMatchEmail(prisma, send);
+        const status = await deliverNextMatchEmail(prisma, send, config.admins);
         if (status !== "idle")
           console.log(JSON.stringify({ component: "match-email", status }));
       } catch {

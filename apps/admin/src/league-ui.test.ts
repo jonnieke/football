@@ -1,12 +1,18 @@
 import { Script, runInNewContext } from "node:vm";
 import { expect, it, vi } from "vitest";
-import { leagueHtml, leagueScript } from "./league-ui.js";
+import { leagueHtml, leagueScript, popularLeagues } from "./league-ui.js";
 import { browserScript } from "./ui.js";
 
 it("ships valid browser code with paused onboarding and no unsafe HTML insertion", () => {
   expect(() => new Script(browserScript)).not.toThrow();
+  expect(leagueHtml).toContain("Enable selected leagues");
+  expect(leagueHtml).toContain("Advanced: add another league by ID");
   expect(leagueHtml).toContain("Add paused league");
-  expect(leagueHtml).toContain("does not verify provider coverage");
+  expect(leagueHtml).toContain("It does not verify provider coverage");
+  expect(popularLeagues.map((league) => league.name)).toContain("Premier League");
+  expect(new Set(popularLeagues.map((league) => league.sourceId)).size).toBe(
+    popularLeagues.length,
+  );
   expect(leagueScript).not.toMatch(/innerHTML|insertAdjacentHTML/);
 });
 it("sends the exact league version after confirmation and sends nothing on cancel", async () => {
@@ -38,7 +44,8 @@ it("sends the exact league version after confirmation and sends nothing on cance
   let pending: Promise<unknown> | undefined;
   const card = runInNewContext(leagueScript + ";leagueCard", {
     document: { createElement },
-    byId: () => ({ addEventListener() {}, replaceChildren() {} }),
+    currentRole: "admin",
+    byId: () => ({ value: "2026", addEventListener() {}, replaceChildren() {}, append() {} }),
     confirm,
     loadDashboard: vi.fn().mockResolvedValue(undefined),
     api,
@@ -70,5 +77,47 @@ it("sends the exact league version after confirmation and sends nothing on cance
     version: 1,
     enabled: true,
   });
-  expect(elements[1]?.textContent).toContain("<img src=x>");
+  expect(elements.some((element) => element.textContent.includes("<img src=x>"))).toBe(true);
+});
+
+it("enables a named checklist league without the administrator entering its ID", async () => {
+  const handlers = new Map<string, (event: { preventDefault(): void; submitter: object }) => void>();
+  const fields = new Map<string, {
+    value: string;
+    hidden?: boolean;
+    replaceChildren(): void;
+    append(): void;
+    querySelectorAll(): { value: string }[];
+    addEventListener(event: string, handler: (event: { preventDefault(): void; submitter: object }) => void): void;
+  }>();
+  const byId = (id: string) => {
+    if (!fields.has(id)) fields.set(id, {
+      value: id === "popular-season" ? "2026" : "",
+      replaceChildren() {}, append() {},
+      querySelectorAll: () => id === "popular-league-list" ? [{ value: "140" }] : [],
+      addEventListener: (event, handler) => handlers.set(id + ":" + event, handler),
+    });
+    return fields.get(id)!;
+  };
+  const api = vi.fn((_path: string, input?: { action?: string }) => {
+    if (input?.action === "add") return { item: { id: "new-league", sourceId: "140", season: 2026, enabled: false, coverageVersion: 1 } };
+    if (input?.action === "set-enabled") return { item: { id: "new-league", sourceId: "140", season: 2026, enabled: true, coverageVersion: 2 } };
+    return { items: [] };
+  });
+  let pending: Promise<unknown> | undefined;
+  runInNewContext(leagueScript, {
+    document: { createElement: () => ({ append() {}, replaceWith() {}, addEventListener() {} }) },
+    currentRole: "admin",
+    byId, api, confirm: () => true, notice: vi.fn(),
+    loadDashboard: vi.fn().mockResolvedValue(undefined),
+    busy: (_button: object, work: () => Promise<unknown>) => { pending = work(); },
+  });
+  handlers.get("popular-league-form:submit")!({ preventDefault() {}, submitter: {} });
+  await pending;
+  expect(api).toHaveBeenCalledWith("/api/competitions", {
+    action: "add", name: "La Liga", sourceId: "140", season: 2026,
+  });
+  expect(api).toHaveBeenCalledWith("/api/competitions", {
+    action: "set-enabled", id: "new-league", version: 1, enabled: true,
+  });
 });

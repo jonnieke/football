@@ -1,4 +1,9 @@
 .git
+**/.vercel
+**/.env
+**/.env.*
+.codex
+supabase/.temp
 .sandbox-replay
 **/node_modules
 **/dist

@@ -34,6 +34,13 @@ suite("admin authentication with isolated Redis and PostgreSQL", () => {
             key,
           ),
         ),
+      hgetall: async (key) => {
+        const result = await resources.redis.eval("return redis.call('HGETALL', KEYS[1])", 1, key);
+        const values = result as string[];
+        return Object.fromEntries(Array.from({ length: values.length / 2 }, (_, index) => [values[index * 2]!, values[index * 2 + 1]!]));
+      },
+      hset: async (key, field, value) => Number(await resources.redis.eval("return redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])", 1, key, field, value)),
+      hdel: async (key, field) => Number(await resources.redis.eval("return redis.call('HDEL', KEYS[1], ARGV[1])", 1, key, field)),
       eval: (...args) => resources.redis.eval(...args),
     };
   }, 90000);
@@ -84,7 +91,7 @@ suite("admin authentication with isolated Redis and PostgreSQL", () => {
           action: "add",
           actor: "forged@example.com",
           settings: {
-            email: "alerts@example.com",
+            email: "admin@example.com",
             enabled: true,
             warnings: true,
             critical: true,

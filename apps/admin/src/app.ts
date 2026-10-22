@@ -6,6 +6,10 @@ import {
   ContentApprovalConflict,
   competitionChangeSchema,
   CompetitionConflict,
+  apiClientChangeSchema,
+  ApiClientConflict,
+  matchControlSchema,
+  MatchControlConflict,
 } from "@fcp/database";
 import { adminAuth, secret, sendLogin, type AuthRedis } from "./auth.js";
 import type { AdminConfig } from "./config.js";
@@ -37,6 +41,15 @@ export function buildAdmin(deps: {
     change(input: unknown, actor: string): Promise<unknown>;
     history(): Promise<unknown>;
   };
+  apiClients?: {
+    list(): Promise<unknown>;
+    create(input: unknown): Promise<unknown>;
+    revoke(id: string): Promise<unknown>;
+  };
+  matches?: {
+    list(date: string): Promise<unknown>;
+    change(input: unknown, actor: string): Promise<unknown>;
+  };
   content?: {
     list(after?: string): Promise<unknown>;
     approve(input: unknown, actor: string): Promise<unknown>;
@@ -67,6 +80,14 @@ export function buildAdmin(deps: {
     return entries.length === 1
       ? entries[0]!.slice(name.length + 1)
       : undefined;
+  };
+  const requireRole = async (request: { headers: { cookie?: string | undefined } }, minimum: "editor" | "admin") => {
+    const email = await auth.identity(readCookie(request.headers.cookie, sessionName));
+    if (!email) throw new HttpError(401, "Session expired; sign in again");
+    const role = await auth.role(email);
+    if (role !== "admin" && !(minimum === "editor" && role === "editor"))
+      throw new HttpError(403, "Your account does not have permission for this action");
+    return email;
   };
   app.addHook("onRequest", async (request, reply) => {
     void reply.headers({
@@ -163,6 +184,20 @@ export function buildAdmin(deps: {
         "If this address is approved, a sign-in link will arrive. Open it in this browser within 10 minutes.",
     };
   });
+  app.post("/auth/password", async (request, reply) => {
+    const { email, password } = z.object({
+      email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
+      password: z.string().min(1).max(128),
+    }).strict().parse(request.body);
+    if (!(await auth.limit("login-ip", request.ip, 10, 600)))
+      throw new HttpError(429, "Too many sign-in attempts; try again later");
+    const permitted = await auth.limit("login-password-email", email, 8, 600);
+    const global = await auth.limit("login-global", "all", 60, 600);
+    const session = permitted && global ? await auth.login(email, password) : null;
+    if (!session) throw new HttpError(401, "Email or password is incorrect");
+    void reply.header("Set-Cookie", cookie(sessionName, session, 28800));
+    return { ok: true };
+  });
   app.post("/auth/redeem", async (request, reply) => {
     const { token } = z
       .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
@@ -199,16 +234,73 @@ export function buildAdmin(deps: {
           "Sign in with an approved administrator address",
         );
     });
-    secured.get("/api/session", async (request) => ({
-      email: await auth.identity(
-        readCookie(request.headers.cookie, sessionName),
-      ),
-    }));
+    secured.get("/api/session", async (request) => {
+      const email = await auth.identity(readCookie(request.headers.cookie, sessionName));
+      return { email, role: email ? await auth.role(email) : null };
+    });
+    secured.get("/api/users", async (request) => {
+      await requireRole(request, "admin");
+      const users = await auth.users();
+      return {
+        users: users.map((user) => ({ ...user, configured: config.admins.has(user.email) })),
+        configuredAdmins: [...config.admins].filter((email) => !users.some((user) => user.email === email)),
+      };
+    });
+    secured.post("/api/users", async (request) => {
+      const actor = await requireRole(request, "admin");
+      const input = z.discriminatedUnion("action", [
+        z.object({ action: z.literal("create"), email: z.string().trim().toLowerCase().max(254).pipe(z.email()), role: z.enum(["viewer", "editor", "admin"]), password: z.string().min(12).max(128) }).strict(),
+        z.object({ action: z.literal("update"), email: z.string().trim().toLowerCase().max(254).pipe(z.email()), role: z.enum(["viewer", "editor", "admin"]), disabled: z.boolean(), password: z.string().min(12).max(128).optional() }).strict(),
+      ]).parse(request.body);
+      if (input.action === "create") {
+        if ((await auth.users()).some((user) => user.email === input.email) || (config.admins.has(input.email) && input.role !== "admin"))
+          throw new HttpError(409, "An account with this email already exists");
+        return { user: await auth.saveUser(input) };
+      }
+      if (input.email === actor && (input.disabled || input.role !== "admin"))
+        throw new HttpError(400, "You cannot disable or downgrade your own account");
+      if (config.admins.has(input.email) && (input.role !== "admin" || input.disabled))
+        throw new HttpError(400, "Original administrators must remain enabled as admins; you may reset their password");
+      const user = await auth.updateUser({
+        email: input.email,
+        role: input.role,
+        disabled: input.disabled,
+        ...(input.password === undefined ? {} : { password: input.password }),
+      });
+      if (!user) throw new HttpError(404, "Account not found");
+      return { user };
+    });
     secured.get("/api/live-feed", async (request) => {
       if (!deps.liveFeed)
         throw new HttpError(503, "Live feed is not configured");
       const { after } = liveFeedQuery.parse(request.query);
       return deps.liveFeed(after);
+    });
+    secured.get("/api/matches", async (request) => {
+      if (!deps.matches)
+        throw new HttpError(503, "Match controls are not configured");
+      const { date } = z
+        .object({ date: z.iso.date() })
+        .strict()
+        .parse(request.query);
+      return deps.matches.list(date);
+    });
+    secured.post("/api/matches", async (request) => {
+      if (!deps.matches)
+        throw new HttpError(503, "Match controls are not configured");
+      const actor = await requireRole(request, "editor");
+      try {
+        return {
+          item: await deps.matches.change(
+            matchControlSchema.parse(request.body),
+            actor,
+          ),
+        };
+      } catch (error) {
+        if (error instanceof MatchControlConflict)
+          throw new HttpError(409, error.message);
+        throw error;
+      }
     });
     secured.get("/api/content/drafts", async (request) => {
       if (!deps.content)
@@ -233,13 +325,34 @@ export function buildAdmin(deps: {
         throw new HttpError(503, "League controls are not configured");
       return { items: await deps.competitions.history() };
     });
+    secured.get("/api/clients", async (request) => {
+      await requireRole(request, "admin");
+      if (!deps.apiClients)
+        throw new HttpError(503, "API access is not configured");
+      return { items: await deps.apiClients.list() };
+    });
+    secured.post("/api/clients", async (request) => {
+      if (!deps.apiClients)
+        throw new HttpError(503, "API access is not configured");
+      const actor = await requireRole(request, "admin");
+      const change = apiClientChangeSchema.parse(request.body);
+      try {
+        if (change.action === "create") {
+          if (!(await auth.limit("api-key-create", actor, 5, 3600)))
+            throw new HttpError(429, "Key creation limit reached. Try later.");
+          return await deps.apiClients.create(change);
+        }
+        return { client: await deps.apiClients.revoke(change.id) };
+      } catch (error) {
+        if (error instanceof ApiClientConflict)
+          throw new HttpError(409, error.message);
+        throw error;
+      }
+    });
     secured.post("/api/competitions", async (request) => {
       if (!deps.competitions)
         throw new HttpError(503, "League controls are not configured");
-      const actor = await auth.identity(
-        readCookie(request.headers.cookie, sessionName),
-      );
-      if (!actor) throw new HttpError(401, "Session expired");
+      const actor = await requireRole(request, "editor");
       const input = competitionChangeSchema.parse(request.body);
       try {
         return { item: await deps.competitions.change(input, actor) };
@@ -257,10 +370,7 @@ export function buildAdmin(deps: {
     secured.post("/api/content/approve", async (request) => {
       if (!deps.content)
         throw new HttpError(503, "Content approval is not configured");
-      const actor = await auth.identity(
-        readCookie(request.headers.cookie, sessionName),
-      );
-      if (!actor) throw new HttpError(401, "Session expired");
+      const actor = await requireRole(request, "editor");
       const input = contentApprovalSchema.parse(request.body);
       try {
         return { item: await deps.content.approve(input, actor) };
@@ -271,13 +381,15 @@ export function buildAdmin(deps: {
       }
     });
     secured.get("/api/recipients", async (request) => {
+      await requireRole(request, "admin");
       const query = z
         .object({ after: z.uuid().optional() })
         .strict()
         .parse(request.query);
       return { items: await store.list(query.after) };
     });
-    secured.get("/api/match-emails", async () => {
+    secured.get("/api/match-emails", async (request) => {
+      await requireRole(request, "admin");
       if (!deps.matchEmails)
         throw new HttpError(503, "Match email status is not configured");
       return { items: await deps.matchEmails() };
@@ -288,16 +400,22 @@ export function buildAdmin(deps: {
       return deps.dashboard();
     });
     secured.get("/api/history/:id", async (request) => {
+      await requireRole(request, "admin");
       const { id } = z.object({ id: z.uuid() }).parse(request.params);
       return { items: await store.history(id) };
     });
     secured.post("/api/recipients", async (request) => {
-      const actor = await auth.identity(
-        readCookie(request.headers.cookie, sessionName),
-      );
-      if (!actor) throw new HttpError(401, "Session expired");
+      const actor = await requireRole(request, "admin");
       const body = z.record(z.string(), z.unknown()).parse(request.body);
       const change = recipientChangeSchema.parse({ ...body, actor });
+      if (
+        change.action !== "remove" &&
+        !config.admins.has(change.settings.email)
+      )
+        throw new HttpError(
+          403,
+          "Alert addresses must be approved administrators",
+        );
       try {
         return { item: await store.change(change) };
       } catch (error) {

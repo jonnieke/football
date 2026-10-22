@@ -59,6 +59,31 @@ export async function approveContent(
   actor = z.string().trim().toLowerCase().max(254).pipe(z.email()).parse(actor);
   return prisma.$transaction(
     async (tx) => {
+      const target = await tx.contentItem.findUnique({
+        where: { id },
+        include: {
+          event: {
+            select: {
+              fixtureId: true,
+              fixture: { select: { competitionId: true } },
+            },
+          },
+        },
+      });
+      if (!target) throw new ContentApprovalConflict("Report no longer exists");
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`coverage:${target.event.fixture.competitionId}`}, 0))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`match-notifications:${target.event.fixtureId}`}, 0))`;
+      const match = await tx.fixture.findUniqueOrThrow({
+        where: { id: target.event.fixtureId },
+        select: {
+          notificationsEnabled: true,
+          competition: { select: { enabled: true } },
+        },
+      });
+      if (!match.notificationsEnabled || !match.competition.enabled)
+        throw new ContentApprovalConflict(
+          "Enable notifications for this match and league before publishing.",
+        );
       // Lock the exact reviewed row; publication and audit commit together.
       await tx.$executeRaw`SET LOCAL statement_timeout = '5000ms'`;
       const claim = await tx.contentItem.updateMany({

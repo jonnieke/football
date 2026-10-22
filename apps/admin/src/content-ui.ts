@@ -31,6 +31,7 @@ async function loadDrafts(reset = true) {
     const text = document.createElement('p'); text.textContent = item.standardText;
     const short = document.createElement('p'); short.textContent = 'Short alert: ' + item.shortText;
     const button = document.createElement('button'); button.textContent = 'Approve and publish';
+    button.hidden = currentRole === 'viewer';
     button.addEventListener('click', () => { if (!confirmDraftPublication(item)) return;
       busy(button, async () => { await api('/api/content/approve', {id:item.id, fingerprint:item.fingerprint}); card.remove(); notice('Content approved and published.'); await loadDrafts(true); await loadApprovalHistory(); }); });
     card.append(heading, meta, timing, generated, text, short, button); byId('draft-list').append(card);

@@ -12,6 +12,7 @@ export const testAdminConfig = (origin = "https://admin.example.com") =>
 /** Test double only; real atomic/expiry behavior is covered in isolated Redis tests. */
 export function memoryAuthRedis(): AuthRedis {
   const values = new Map<string, { value: string; expires: number }>();
+  const hashes = new Map<string, Map<string, string>>();
   const read = (key: string) => {
     const value = values.get(key);
     if (!value || value.expires <= Date.now()) {
@@ -27,6 +28,15 @@ export function memoryAuthRedis(): AuthRedis {
       return Promise.resolve("OK");
     },
     del: (key) => Promise.resolve(Number(values.delete(key))),
+    hgetall: (key) => Promise.resolve(Object.fromEntries(hashes.get(key) ?? [])),
+    hset: (key, field, value) => {
+      let hash = hashes.get(key);
+      if (!hash) hashes.set(key, (hash = new Map()));
+      const fresh = !hash.has(field);
+      hash.set(field, value);
+      return Promise.resolve(Number(fresh));
+    },
+    hdel: (key, field) => Promise.resolve(Number(hashes.get(key)?.delete(field) ?? false)),
     eval: (script, _count, ...args) => {
       const key = String(args[0]);
       const value = read(key);

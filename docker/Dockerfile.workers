@@ -7,7 +7,8 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter '@fcp/football-ingestion...' \
     --filter '@fcp/outbox-dispatcher...' \
     --filter '@fcp/event-processor...' \
-    --filter '@fcp/content-generator...' build
+    --filter '@fcp/content-generator...' \
+    --filter '@fcp/staging-push...' build
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*

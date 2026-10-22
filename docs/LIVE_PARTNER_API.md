@@ -3,7 +3,7 @@
 Deployed to `https://api-1lc3.vercel.app` on 2026-09-15 as
 `dpl_BqKd2ZFuEDA1PNGw8VWdTL2vTt75`. Authenticated staged streaming, rotation,
 cursor resumption, REST cursor compatibility and revoked-key rejection passed.
-Persistent football workers remain stopped; this is not yet an active live-data service.
+That release evidence is historical; it does not describe current worker health.
 See [release evidence](RELEASE_2026-09-15.md).
 
 `GET /v1/feed/stream` delivers published reports over Server-Sent Events (SSE).
@@ -12,6 +12,29 @@ The existing `GET /v1/feed` remains the durable history/catch-up endpoint.
 Neither endpoint requires a human to approve normally eligible live reports.
 
 ## Connection contract
+
+### Administrator setup and match selection
+
+Sign in to the control room using an approved administrator email. In **API access**,
+create a named client and copy the one-time key into the receiving server's secret
+store. There is no public signup or restricted developer role: an approved login
+has administrator privileges. Approve access deliberately.
+
+In **Leagues**, enable the competitions to collect. In **Matches**, choose a UTC
+date and check/uncheck games. Live games also appear regardless of date. Selection
+saves immediately, persists across reloads, and controls future publication for
+all connected API clients. New games default to selected. Turning a game back on
+does not release observations queued before that change. Already published alerts
+remain replayable; downstream systems must not interpret a switch as a retraction.
+
+The receiving service can run inside a private network: it initiates outbound
+HTTPS to the stream, so MySQL port 3306 does not need public exposure. Read
+`items[].text.short` for the notification (new alerts are limited to 150 characters).
+The developer owns downstream insertion and deduplication.
+
+Match-control rollout requires migration `20260926000000_match_notifications`
+before deploying the updated admin and content worker. Until those components are
+deployed together, the new checkboxes are not an active production control.
 
 - Send `Authorization: Bearer <partner-key>` and optionally `Accept: text/event-stream`.
 - Optional query filters: `channel` and `event_type`, identical to REST feed filters.

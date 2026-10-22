@@ -108,8 +108,8 @@ suite("durable match emails (fake sender only)", () => {
     });
     const send = vi.fn().mockResolvedValue("provider-accepted");
     const outcomes = await Promise.all([
-      deliverNextMatchEmail(prisma, send),
-      deliverNextMatchEmail(prisma, send),
+      deliverNextMatchEmail(prisma, send, new Set([subscribed.email])),
+      deliverNextMatchEmail(prisma, send, new Set([subscribed.email])),
     ]);
     expect(outcomes).toContain("accepted");
     expect(send).toHaveBeenCalledTimes(1);
@@ -149,13 +149,14 @@ suite("durable match emails (fake sender only)", () => {
       .fn()
       .mockRejectedValueOnce(new MatchEmailSendError(true))
       .mockResolvedValue("accepted");
-    expect(await deliverNextMatchEmail(resources.prisma, send, now)).toBe(
+    expect(await deliverNextMatchEmail(resources.prisma, send, new Set(["retry@example.com"]), now)).toBe(
       "retry",
     );
     expect(
       await deliverNextMatchEmail(
         resources.prisma,
         send,
+        new Set(["retry@example.com"]),
         new Date(now.getTime() + 6000),
       ),
     ).toBe("accepted");
@@ -179,7 +180,7 @@ suite("durable match emails (fake sender only)", () => {
       settings: { ...settings, email: "after@example.com" },
     });
     const send = vi.fn();
-    expect(await deliverNextMatchEmail(resources.prisma, send, now)).toBe(
+    expect(await deliverNextMatchEmail(resources.prisma, send, new Set(["before@example.com"]), now)).toBe(
       "cancelled",
     );
     expect(send).not.toHaveBeenCalled();
@@ -191,7 +192,7 @@ suite("durable match emails (fake sender only)", () => {
     const now = new Date();
     await queue("expired@example.com", new Date(now.getTime() - 11 * 60000));
     const send = vi.fn();
-    expect(await deliverNextMatchEmail(resources.prisma, send, now)).toBe(
+    expect(await deliverNextMatchEmail(resources.prisma, send, new Set(["expired@example.com"]), now)).toBe(
       "expired",
     );
     expect(send).not.toHaveBeenCalled();
@@ -200,7 +201,7 @@ suite("durable match emails (fake sender only)", () => {
     });
     await queue("reject@example.com", now);
     send.mockRejectedValueOnce(new MatchEmailSendError(false));
-    expect(await deliverNextMatchEmail(resources.prisma, send, now)).toBe(
+    expect(await deliverNextMatchEmail(resources.prisma, send, new Set(["reject@example.com"]), now)).toBe(
       "failed",
     );
     await resources.prisma.alertRecipient.updateMany({

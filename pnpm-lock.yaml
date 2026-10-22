@@ -246,6 +246,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
 
+  workers/staging-push:
+    dependencies:
+      '@fcp/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      mysql2:
+        specifier: 3.24.3
+        version: 3.24.3(@types/node@24.3.0)
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
 packages:
 
   '@electric-sql/pglite-socket@0.1.3':

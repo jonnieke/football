@@ -6,6 +6,7 @@ export default defineConfig({
     maxWorkers: 2,
     include: [
       "apps/**/*.test.ts",
+      "workers/**/*.test.ts",
       "packages/**/*.test.ts",
       "tests/**/*.test.ts",
     ],

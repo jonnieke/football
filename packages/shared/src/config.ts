@@ -84,7 +84,7 @@ const environmentSchema = z.object({
     .int()
     .min(80)
     .max(500)
-    .default(160),
+    .default(150),
   DEFAULT_API_RATE_LIMIT: z.coerce
     .number()
     .int()

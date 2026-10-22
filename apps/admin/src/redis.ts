@@ -52,6 +52,9 @@ export function createAdminRedis(
     set: (key, value, mode, seconds) =>
       connection().set(key, value, mode, seconds),
     del: (key) => connection().del(key),
+    hgetall: (key) => connection().hgetall(key),
+    hset: (key, field, value) => connection().hset(key, field, value),
+    hdel: (key, field) => connection().hdel(key, field),
     eval: (script, count, ...args) => connection().eval(script, count, ...args),
   };
   return {
