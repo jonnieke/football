@@ -34,6 +34,11 @@ export function adminConfig(env: NodeJS.ProcessEnv) {
     origin.pathname !== "/"
   )
     throw new Error("ADMIN_ORIGIN must be a secure, fixed origin");
+  const allowedOrigins = new Set([origin.origin]);
+  if (origin.hostname === "onfonfootball.com")
+    allowedOrigins.add("https://www.onfonfootball.com");
+  if (origin.hostname === "www.onfonfootball.com")
+    allowedOrigins.add("https://onfonfootball.com");
   const admins = z
     .array(email)
     .min(1)
@@ -48,6 +53,7 @@ export function adminConfig(env: NodeJS.ProcessEnv) {
   return {
     ...config,
     origin: origin.origin,
+    allowedOrigins,
     admins: new Set(admins.data),
     secure: !local,
   };

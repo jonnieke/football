@@ -9,8 +9,7 @@ const apps: ReturnType<typeof buildAdmin>[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
-function setup() {
-  const config = testAdminConfig();
+function setup(config = testAdminConfig()) {
   const redis = memoryAuthRedis();
   const store = {
     list: vi.fn().mockResolvedValue([]),
@@ -338,6 +337,24 @@ it("rejects unauthorized reads, foreign/missing origins and form submissions", a
     ).statusCode,
   ).toBe(403);
   expect(store.list).not.toHaveBeenCalled();
+});
+it("accepts the configured production domain and its exact www alias", async () => {
+  const { post, send } = setup(testAdminConfig("https://onfonfootball.com"));
+  const response = await post(
+    "/auth/request",
+    { email: "unknown@example.com" },
+    "",
+    "https://www.onfonfootball.com",
+  );
+  expect(response.statusCode).toBe(200);
+  expect(send).not.toHaveBeenCalled();
+  const foreign = await post(
+    "/auth/request",
+    { email: "unknown@example.com" },
+    "",
+    "https://evil.onfonfootball.com",
+  );
+  expect(foreign.statusCode).toBe(403);
 });
 it("uses generic login responses and never sends to unapproved recipients", async () => {
   const { post, send } = setup();

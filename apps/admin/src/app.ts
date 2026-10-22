@@ -100,7 +100,7 @@ export function buildAdmin(deps: {
     });
     if (request.method !== "GET" && request.method !== "HEAD") {
       if (
-        request.headers.origin !== config.origin ||
+        !config.allowedOrigins.has(request.headers.origin ?? "") ||
         request.headers["x-admin-request"] !== "1"
       )
         throw new HttpError(403, "Request origin rejected");
