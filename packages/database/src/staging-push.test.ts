@@ -13,7 +13,7 @@ function deliveryHarness(overrides: Record<string, unknown> = {}) {
     id,
     contentId: id,
     message: "GOAL 67': Arsenal 2-1 Chelsea.",
-    menuCmd: "LIVESCORES",
+    menuCmd: "All Day News/LiveScores",
     uploadedBy: "Football Content Platform",
     status: "pending",
     attempts: 0,
@@ -49,7 +49,7 @@ describe("staging push delivery ledger", () => {
         expect.objectContaining({
           contentId: id,
           message: "Kick-off: Arsenal v Chelsea",
-          menuCmd: "LIVESCORES",
+          menuCmd: "All Day News/LiveScores",
           uploadedBy: "Football Content Platform",
           expiresAt: new Date("2026-09-25T10:10:00.000Z"),
         }),
@@ -73,7 +73,7 @@ describe("staging push delivery ledger", () => {
     expect(send).toHaveBeenCalledWith({
       id,
       text: "GOAL 67': Arsenal 2-1 Chelsea.",
-      menuCmd: "LIVESCORES",
+      menuCmd: "All Day News/LiveScores",
       uploadedBy: "Football Content Platform",
     });
     expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(

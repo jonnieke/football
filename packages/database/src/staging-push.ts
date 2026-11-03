@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
 
-export const STAGING_PUSH_MENU_CMD = "LIVESCORES";
-export const STAGING_PUSH_UPLOADED_BY = "Football Content Platform";
+export const STAGING_PUSH_MENU_CMD =
+  process.env.STAGING_PUSH_MENU_CMD ?? "All Day News/LiveScores";
+export const STAGING_PUSH_UPLOADED_BY =
+  process.env.STAGING_PUSH_UPLOADED_BY ?? "Football Content Platform";
 
 /** Enqueued atomically with a newly published content item. */
 export async function enqueueStagingPush(

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import type { ContentItem, PrismaClient } from "./generated/prisma/client.ts";
+import { enqueueStagingPush } from "./staging-push.js";
 
 export class ContentApprovalConflict extends Error {}
 export const contentApprovalSchema = z
@@ -116,6 +117,11 @@ export async function approveContent(
       const published = await tx.contentItem.update({
         where: { id },
         data: { status: "published", publishedAt: new Date() },
+      });
+      await enqueueStagingPush(tx, {
+        contentId: id,
+        message: item.shortText,
+        now: published.publishedAt ?? new Date(),
       });
       return {
         id: published.id,

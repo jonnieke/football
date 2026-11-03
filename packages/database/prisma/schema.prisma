@@ -278,7 +278,7 @@ model StagingPushDelivery {
   contentId      String   @unique @map("content_id") @db.Uuid
   content        ContentItem @relation(fields: [contentId], references: [id])
   message        String   @db.VarChar(150)
-  menuCmd        String   @default("LIVESCORES") @map("menu_cmd") @db.VarChar(40)
+  menuCmd        String   @default("All Day News/LiveScores") @map("menu_cmd") @db.VarChar(100)
   uploadedBy     String   @default("Football Content Platform") @map("uploaded_by") @db.VarChar(100)
   status         String   @default("pending")
   attempts       Int      @default(0)
