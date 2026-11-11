@@ -67,7 +67,7 @@ suite("durable staging-table push delivery", () => {
     ]);
     const jobs = await resources.prisma.stagingPushDelivery.findMany();
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]?.message).toBe("GOAL 67': Arsenal 2-1 Chelsea.");
+    expect(jobs[0]?.message).toBe("GOAL! 67' Arsenal 2-1 Chelsea.");
     expect(jobs[0]?.menuCmd).toBe("All Day News/LiveScores");
   });
 
