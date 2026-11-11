@@ -2,7 +2,7 @@ export const preMatchHtml = `<section aria-labelledby="pre-match-heading">
 <div class="toolbar">
   <div>
     <h2 id="pre-match-heading">Pre-Match Score Notification Approvals</h2>
-    <p class="hint">Regulators permit a maximum of 4 notifications per game. We push only scores (no red cards, yellow cards, or duration alerts). After midnight EAT, next-day matches refresh automatically.</p>
+    <p class="hint">Regulators permit a maximum of 4 notifications per game (3 in-game live score alerts and 1 final score at full-time). We push only scores (no red cards, yellow cards, or duration alerts). After midnight EAT, next-day matches refresh automatically.</p>
   </div>
   <button id="pre-match-refresh" class="secondary">Refresh matches</button>
 </div>
@@ -13,7 +13,7 @@ export const preMatchHtml = `<section aria-labelledby="pre-match-heading">
   </div>
   <div class="pm-metric">
     <span class="pm-metric-label">Per-game limit</span>
-    <span class="pm-metric-value pm-pill">Max 4 Scores</span>
+    <span class="pm-metric-value pm-pill">3 Live + 1 Final Score</span>
   </div>
   <div class="pm-metric">
     <span class="pm-metric-label">Scores pushed today</span>
@@ -92,8 +92,13 @@ async function loadPreMatch() {
       
       const progress = document.createElement('div');
       progress.className = 'pm-match-progress';
-      const pillClass = item.isLimitReached ? 'pm-pill pm-pill-full' : (item.pushedCount > 0 ? 'pm-pill pm-pill-active' : 'pm-pill');
-      const pillText = item.isLimitReached ? item.pushedCount + ' / ' + item.maxPerGame + ' pushed (Limit reached)' : item.pushedCount + ' / ' + item.maxPerGame + ' scores pushed';
+      const inGame = Number(item.inGameCount || 0);
+      const finalScore = Number(item.finalScoreCount || 0);
+      const total = Number(item.pushedCount || 0);
+      const pillClass = item.isLimitReached ? 'pm-pill pm-pill-full' : (total > 0 ? 'pm-pill pm-pill-active' : 'pm-pill');
+      const pillText = item.isLimitReached
+        ? total + ' / 4 pushed (Limit reached)'
+        : inGame + '/3 live + ' + (finalScore > 0 ? '1/1 FT' : '0/1 FT') + ' (' + total + '/4 max)';
       const pillSpan = document.createElement('span');
       pillSpan.className = pillClass;
       pillSpan.textContent = pillText;
@@ -113,7 +118,7 @@ async function loadPreMatch() {
       scoreBox.checked = Boolean(item.approved);
       scoreBox.disabled = currentRole === 'viewer' || item.isLimitReached;
       const scoreSpan = document.createElement('span');
-      scoreSpan.textContent = '⚽ Push Score Notifications (Max 4)';
+      scoreSpan.textContent = '⚽ Push Score Alerts (3 live + 1 final score)';
       scoreLabel.append(scoreBox, scoreSpan);
 
       // Optional scorer detail checkbox
@@ -133,8 +138,15 @@ async function loadPreMatch() {
       if (item.isLimitReached) {
         const banner = document.createElement('div');
         banner.className = 'pm-game-limit-banner';
-        banner.textContent = 'Maximum 4 score notifications reached for this game. No further alerts will be pushed.';
+        banner.textContent = 'Maximum 4 score notifications reached for this game (3 live + 1 final score). No further alerts will be pushed.';
         card.append(banner);
+      } else if (inGame >= 3) {
+        const liveNotice = document.createElement('div');
+        liveNotice.className = 'pm-game-limit-banner';
+        liveNotice.style.background = '#eef6f0';
+        liveNotice.style.color = '#205e3b';
+        liveNotice.textContent = '3 live in-game alerts sent. Live alerts paused to reserve final slot for the full-time score.';
+        card.append(liveNotice);
       }
 
       async function updateApproval(detailType, approved) {

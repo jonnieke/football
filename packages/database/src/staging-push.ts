@@ -3,9 +3,12 @@ import { MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
 import {
   getEATDateString,
-  getEATDayRange,
   isEventTypeCoveredByDetails,
+  isFinalScoreEvent,
+  isInGameScoreEvent,
   isScoreEvent,
+  MAX_FINAL_SCORE_NOTIFICATIONS,
+  MAX_IN_GAME_NOTIFICATIONS,
   MAX_PER_GAME_NOTIFICATIONS,
 } from "./pre-match.js";
 
@@ -107,16 +110,20 @@ export async function deliverNextStagingPush(
 
   const todayStr = getEATDateString(now);
 
+  type QueryFn<T = unknown> = (...args: unknown[]) => Promise<T>;
   const extendedPrisma = prisma as unknown as {
-    contentItem?: { findUnique?: Function };
-    preMatchApproval?: { findMany?: Function };
-    stagingPushDelivery?: { count?: Function };
+    contentItem?: { findUnique?: QueryFn<{ event?: { fixtureId: string; eventType: string } } | null> };
+    preMatchApproval?: { findMany?: QueryFn<Array<{ detailType: string }>> };
+    stagingPushDelivery?: {
+      count?: QueryFn<number>;
+      findMany?: QueryFn<Array<{ content?: { event?: { eventType?: string } } }>>;
+    };
   };
   if (
     typeof extendedPrisma.contentItem?.findUnique === "function" &&
     typeof extendedPrisma.preMatchApproval?.findMany === "function"
   ) {
-    const contentItem = (await extendedPrisma.contentItem.findUnique({
+    const contentItem = await extendedPrisma.contentItem.findUnique({
       where: { id: job.contentId },
       select: {
         event: {
@@ -126,7 +133,7 @@ export async function deliverNextStagingPush(
           },
         },
       },
-    })) as { event?: { fixtureId: string; eventType: string } } | null;
+    });
 
     if (contentItem?.event) {
       // 1. Restriction: only scores per game (no red cards, yellow cards, duration, etc.)
@@ -141,15 +148,64 @@ export async function deliverNextStagingPush(
           fixtureId: contentItem.event.fixtureId,
         },
         select: { detailType: true },
-      })) as Array<{ detailType: string }>;
+      })) ?? [];
       const detailTypes = new Set(approvals.map((a) => a.detailType));
       if (!isEventTypeCoveredByDetails(contentItem.event.eventType, detailTypes)) {
         return finish("failed", "PRE_MATCH_NOT_APPROVED");
       }
 
-      // 3. Restriction: maximum of 4 notifications per game
-      if (typeof extendedPrisma.stagingPushDelivery?.count === "function") {
-        const deliveredForFixture = await prisma.stagingPushDelivery.count({
+      // 3. Restriction: maximum 4 notifications per game (max 3 live in-game + 1 final score)
+      if (typeof extendedPrisma.stagingPushDelivery?.findMany === "function") {
+        const deliveredRows = (await extendedPrisma.stagingPushDelivery.findMany({
+          where: {
+            status: "delivered",
+            content: {
+              event: {
+                fixtureId: contentItem.event.fixtureId,
+              },
+            },
+          },
+          select: {
+            content: {
+              select: {
+                event: {
+                  select: {
+                    eventType: true,
+                  },
+                },
+              },
+            },
+          },
+        })) ?? [];
+
+        const totalDelivered = deliveredRows.length;
+        if (totalDelivered >= MAX_PER_GAME_NOTIFICATIONS) {
+          return finish("failed", "MAX_PER_GAME_LIMIT_REACHED");
+        }
+
+        const currentEventType = contentItem.event.eventType;
+
+        const inGameDelivered = deliveredRows.filter((row) =>
+          isInGameScoreEvent(row.content?.event?.eventType ?? ""),
+        ).length;
+
+        const finalScoreDelivered = deliveredRows.filter((row) =>
+          isFinalScoreEvent(row.content?.event?.eventType ?? ""),
+        ).length;
+
+        if (isInGameScoreEvent(currentEventType)) {
+          // Cap in-game notifications to 3 so the 4th slot is reserved for final score
+          if (inGameDelivered >= MAX_IN_GAME_NOTIFICATIONS) {
+            return finish("failed", "MAX_IN_GAME_LIMIT_REACHED");
+          }
+        } else if (isFinalScoreEvent(currentEventType)) {
+          // Maximum 1 final score notification after full-time
+          if (finalScoreDelivered >= MAX_FINAL_SCORE_NOTIFICATIONS) {
+            return finish("failed", "FINAL_SCORE_ALREADY_DELIVERED");
+          }
+        }
+      } else if (typeof extendedPrisma.stagingPushDelivery?.count === "function") {
+        const deliveredForFixture = await extendedPrisma.stagingPushDelivery.count({
           where: {
             status: "delivered",
             content: {

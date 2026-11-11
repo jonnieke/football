@@ -3,9 +3,11 @@ import { z } from "zod";
 import type { PrismaClient } from "./generated/prisma/client.ts";
 
 export const MAX_PER_GAME_NOTIFICATIONS = 4;
+export const MAX_IN_GAME_NOTIFICATIONS = 3;
+export const MAX_FINAL_SCORE_NOTIFICATIONS = 1;
 export const MAX_DAILY_PRE_MATCH_APPROVALS = 4; // Maintained for legacy compatibility
 
-export const SCORE_EVENT_TYPES = [
+export const IN_GAME_SCORE_EVENT_TYPES = [
   "goal",
   "own_goal",
   "penalty_goal",
@@ -13,6 +15,17 @@ export const SCORE_EVENT_TYPES = [
   "score_correction",
 ] as const;
 
+export const FINAL_SCORE_EVENT_TYPES = [
+  "match_finished",
+] as const;
+
+export const SCORE_EVENT_TYPES = [
+  ...IN_GAME_SCORE_EVENT_TYPES,
+  ...FINAL_SCORE_EVENT_TYPES,
+] as const;
+
+export type InGameScoreEventType = (typeof IN_GAME_SCORE_EVENT_TYPES)[number];
+export type FinalScoreEventType = (typeof FINAL_SCORE_EVENT_TYPES)[number];
 export type ScoreEventType = (typeof SCORE_EVENT_TYPES)[number];
 
 export const PRE_MATCH_DETAIL_TYPES = [
@@ -70,7 +83,21 @@ export function getEATDayRange(dateStr: string): { start: Date; end: Date } {
 }
 
 /**
- * Checks whether an event is a score event.
+ * Checks whether an event is an in-game live score event (max 3 per game).
+ */
+export function isInGameScoreEvent(eventType: string): boolean {
+  return (IN_GAME_SCORE_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
+/**
+ * Checks whether an event is a final score event at full-time (max 1 per game).
+ */
+export function isFinalScoreEvent(eventType: string): boolean {
+  return (FINAL_SCORE_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
+/**
+ * Checks whether an event is a score event (in-game or final score).
  * Regulators and platform policy only allow pushing scores (no red cards, yellow cards, duration).
  */
 export function isScoreEvent(eventType: string): boolean {
@@ -79,7 +106,7 @@ export function isScoreEvent(eventType: string): boolean {
 
 /**
  * Checks whether an event type for a fixture is approved under pre-match approvals.
- * Only score events are allowed to be pushed.
+ * Only score events (in-game scores and final score) are allowed to be pushed.
  */
 export function isEventTypeCoveredByDetails(
   eventType: string,
@@ -91,6 +118,7 @@ export function isEventTypeCoveredByDetails(
   return (
     approvedDetailTypes.has("scores") ||
     approvedDetailTypes.has("goals") ||
+    approvedDetailTypes.has("final_score") ||
     approvedDetailTypes.has("scorer")
   );
 }
@@ -183,6 +211,7 @@ export async function listPreMatchApprovals(prisma: PrismaClient, date: string) 
                 event: {
                   select: {
                     fixtureId: true,
+                    eventType: true,
                   },
                 },
               },
@@ -191,11 +220,23 @@ export async function listPreMatchApprovals(prisma: PrismaClient, date: string) 
         })
       : [];
 
-  const fixturePushedCounts = new Map<string, number>();
+  const fixturePushedCounts = new Map<
+    string,
+    { total: number; inGame: number; finalScore: number }
+  >();
   for (const row of deliveredRows) {
     const fId = row.content?.event?.fixtureId;
+    const eventType = row.content?.event?.eventType ?? "";
     if (fId) {
-      fixturePushedCounts.set(fId, (fixturePushedCounts.get(fId) ?? 0) + 1);
+      const counts = fixturePushedCounts.get(fId) ?? {
+        total: 0,
+        inGame: 0,
+        finalScore: 0,
+      };
+      counts.total += 1;
+      if (isInGameScoreEvent(eventType)) counts.inGame += 1;
+      if (isFinalScoreEvent(eventType)) counts.finalScore += 1;
+      fixturePushedCounts.set(fId, counts);
     }
   }
 
@@ -212,7 +253,14 @@ export async function listPreMatchApprovals(prisma: PrismaClient, date: string) 
 
   const items = fixtures.slice(0, 500).map((f) => {
     const fixtureApprovals = approvalMap.get(f.id) ?? new Set<string>();
-    const pushedCount = fixturePushedCounts.get(f.id) ?? 0;
+    const counts = fixturePushedCounts.get(f.id) ?? {
+      total: 0,
+      inGame: 0,
+      finalScore: 0,
+    };
+    const pushedCount = counts.total;
+    const inGameCount = counts.inGame;
+    const finalScoreCount = counts.finalScore;
     const isLimitReached = pushedCount >= MAX_PER_GAME_NOTIFICATIONS;
     const approved =
       fixtureApprovals.has("scores") || fixtureApprovals.has("goals");
@@ -221,7 +269,11 @@ export async function listPreMatchApprovals(prisma: PrismaClient, date: string) 
     return {
       ...f,
       pushedCount,
+      inGameCount,
+      finalScoreCount,
       maxPerGame: MAX_PER_GAME_NOTIFICATIONS,
+      maxInGame: MAX_IN_GAME_NOTIFICATIONS,
+      maxFinalScore: MAX_FINAL_SCORE_NOTIFICATIONS,
       isLimitReached,
       approved,
       includeScorer,
