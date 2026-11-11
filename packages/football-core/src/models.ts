@@ -24,6 +24,7 @@ export const FOOTBALL_EVENT_TYPES = [
   "penalty_missed",
   "goal_cancelled",
   "red_card",
+  "yellow_card",
   "half_time",
   "second_half_started",
   "extra_time_started",

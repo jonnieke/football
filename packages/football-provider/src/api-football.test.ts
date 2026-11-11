@@ -54,6 +54,7 @@ describe("API-Football normalization", () => {
       {
         response: [
           item("Second Yellow card", "Card"),
+          item("Yellow Card", "Card"),
           item("Missed Penalty"),
           item("Goal cancelled", "Var"),
           item("Card cancelled", "Var"),
@@ -62,7 +63,7 @@ describe("API-Football normalization", () => {
     ]);
     expect(
       (await provider.getFixtureEvents("42")).map((event) => event.eventType),
-    ).toEqual(["red_card", "penalty_missed", "goal_cancelled"]);
+    ).toEqual(["red_card", "yellow_card", "penalty_missed", "goal_cancelled"]);
   });
   it.each([{ requests: "quota exceeded" }, ["invalid key"]])(
     "rejects HTTP 200 application errors",

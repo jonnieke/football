@@ -115,4 +115,124 @@ describe("staging push delivery ledger", () => {
     );
     expect(send).not.toHaveBeenCalled();
   });
+
+  it("refuses delivery when event is not a score event (e.g. red_card)", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(0);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "red_card",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "ONLY_SCORES_ALLOWED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("refuses delivery when per-game limit of 4 notifications is reached", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(4);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "MAX_PER_GAME_LIMIT_REACHED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("refuses delivery when pre-match approval has not been granted", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(0);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([]), // No approvals
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "PRE_MATCH_NOT_APPROVED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("delivers score alert when approved and under 4 notifications for the game", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(2);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn().mockResolvedValue("5001");
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("delivered");
+    expect(send).toHaveBeenCalled();
+  });
 });

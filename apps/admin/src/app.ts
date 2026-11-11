@@ -10,6 +10,8 @@ import {
   ApiClientConflict,
   matchControlSchema,
   MatchControlConflict,
+  preMatchToggleSchema,
+  PreMatchQuotaExceededError,
 } from "@fcp/database";
 import { adminAuth, secret, sendLogin, type AuthRedis } from "./auth.js";
 import type { AdminConfig } from "./config.js";
@@ -49,6 +51,10 @@ export function buildAdmin(deps: {
   matches?: {
     list(date: string): Promise<unknown>;
     change(input: unknown, actor: string): Promise<unknown>;
+  };
+  preMatch?: {
+    list(date: string): Promise<unknown>;
+    toggle(input: unknown, actor: string): Promise<unknown>;
   };
   content?: {
     list(after?: string): Promise<unknown>;
@@ -284,6 +290,32 @@ export function buildAdmin(deps: {
         .strict()
         .parse(request.query);
       return deps.matches.list(date);
+    });
+    secured.get("/api/pre-match", async (request) => {
+      if (!deps.preMatch)
+        throw new HttpError(503, "Pre-match controls are not configured");
+      const { date } = z
+        .object({ date: z.iso.date() })
+        .strict()
+        .parse(request.query);
+      return deps.preMatch.list(date);
+    });
+    secured.post("/api/pre-match", async (request) => {
+      if (!deps.preMatch)
+        throw new HttpError(503, "Pre-match controls are not configured");
+      const actor = await requireRole(request, "editor");
+      try {
+        return {
+          item: await deps.preMatch.toggle(
+            preMatchToggleSchema.parse(request.body),
+            actor,
+          ),
+        };
+      } catch (error) {
+        if (error instanceof PreMatchQuotaExceededError)
+          throw new HttpError(409, error.message);
+        throw error;
+      }
     });
     secured.post("/api/matches", async (request) => {
       if (!deps.matches)

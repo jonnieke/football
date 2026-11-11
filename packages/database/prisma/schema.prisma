@@ -194,6 +194,7 @@ model Fixture {
   states             FixtureState[]
   events             FootballEvent[]
   sourceReviews      SourceEventReview[]
+  preMatchApprovals  PreMatchApproval[]
 
   @@unique([source, sourceFixtureId])
   @@index([status, kickoffAt])
@@ -390,4 +391,20 @@ model SystemIncident {
 
   @@index([component, status])
   @@map("system_incidents")
+}
+
+model PreMatchApproval {
+  id         String   @id @db.Uuid
+  date       String   @db.VarChar(10)
+  fixtureId  String   @map("fixture_id") @db.Uuid
+  detailType String   @map("detail_type") @db.VarChar(40)
+  approvedBy String   @map("approved_by") @db.VarChar(254)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  fixture    Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+
+  @@unique([date, fixtureId, detailType])
+  @@index([date])
+  @@index([fixtureId])
+  @@map("pre_match_approvals")
 }

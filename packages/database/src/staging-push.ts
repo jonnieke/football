@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { MAX_ADMIN_ALERT_LENGTH } from "@fcp/content-core";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.ts";
+import {
+  getEATDateString,
+  getEATDayRange,
+  isEventTypeCoveredByDetails,
+  isScoreEvent,
+  MAX_PER_GAME_NOTIFICATIONS,
+} from "./pre-match.js";
 
 export const STAGING_PUSH_MENU_CMD =
   process.env.STAGING_PUSH_MENU_CMD ?? "All Day News/LiveScores";
@@ -97,6 +104,68 @@ export async function deliverNextStagingPush(
   if (!job.message || job.message.length > MAX_ADMIN_ALERT_LENGTH)
     return finish("failed", "INVALID_MESSAGE");
   if (job.attempts >= 10) return finish("failed", "RETRY_LIMIT");
+
+  const todayStr = getEATDateString(now);
+
+  const extendedPrisma = prisma as unknown as {
+    contentItem?: { findUnique?: Function };
+    preMatchApproval?: { findMany?: Function };
+    stagingPushDelivery?: { count?: Function };
+  };
+  if (
+    typeof extendedPrisma.contentItem?.findUnique === "function" &&
+    typeof extendedPrisma.preMatchApproval?.findMany === "function"
+  ) {
+    const contentItem = (await extendedPrisma.contentItem.findUnique({
+      where: { id: job.contentId },
+      select: {
+        event: {
+          select: {
+            fixtureId: true,
+            eventType: true,
+          },
+        },
+      },
+    })) as { event?: { fixtureId: string; eventType: string } } | null;
+
+    if (contentItem?.event) {
+      // 1. Restriction: only scores per game (no red cards, yellow cards, duration, etc.)
+      if (!isScoreEvent(contentItem.event.eventType)) {
+        return finish("failed", "ONLY_SCORES_ALLOWED");
+      }
+
+      // 2. Pre-match approval: must be approved for this match on this date
+      const approvals = (await extendedPrisma.preMatchApproval.findMany({
+        where: {
+          date: todayStr,
+          fixtureId: contentItem.event.fixtureId,
+        },
+        select: { detailType: true },
+      })) as Array<{ detailType: string }>;
+      const detailTypes = new Set(approvals.map((a) => a.detailType));
+      if (!isEventTypeCoveredByDetails(contentItem.event.eventType, detailTypes)) {
+        return finish("failed", "PRE_MATCH_NOT_APPROVED");
+      }
+
+      // 3. Restriction: maximum of 4 notifications per game
+      if (typeof extendedPrisma.stagingPushDelivery?.count === "function") {
+        const deliveredForFixture = await prisma.stagingPushDelivery.count({
+          where: {
+            status: "delivered",
+            content: {
+              event: {
+                fixtureId: contentItem.event.fixtureId,
+              },
+            },
+          },
+        });
+        if (deliveredForFixture >= MAX_PER_GAME_NOTIFICATIONS) {
+          return finish("failed", "MAX_PER_GAME_LIMIT_REACHED");
+        }
+      }
+    }
+  }
+
   try {
     const targetRecordId = await send({
       id: job.id,

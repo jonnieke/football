@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { buildAdmin } from "./app.js";
-import { CompetitionConflict, MatchControlConflict } from "@fcp/database";
+import {
+  CompetitionConflict,
+  MatchControlConflict,
+  PreMatchQuotaExceededError,
+} from "@fcp/database";
 import {
   memoryAuthRedis,
   testAdminConfig,
@@ -46,6 +50,10 @@ function setup(config = testAdminConfig()) {
     list: vi.fn().mockResolvedValue({ items: [] }),
     change: vi.fn().mockResolvedValue({ notificationsEnabled: false }),
   };
+  const preMatch = {
+    list: vi.fn().mockResolvedValue({ items: [], selectedCount: 0, maxAllowed: 4 }),
+    toggle: vi.fn().mockResolvedValue({ id: "pm1" }),
+  };
   const liveFeed = vi.fn().mockResolvedValue({ items: [], cursor: "test" });
   const matchEmails = vi.fn().mockResolvedValue([]);
   const app = buildAdmin({
@@ -58,6 +66,7 @@ function setup(config = testAdminConfig()) {
     competitions,
     apiClients,
     matches,
+    preMatch,
     liveFeed,
     matchEmails,
   });
@@ -90,6 +99,7 @@ function setup(config = testAdminConfig()) {
   };
   return {
     matches,
+    preMatch,
     matchEmails,
     liveFeed,
     app,
@@ -136,6 +146,33 @@ it("protects match selection and rejects stale or forged changes", async () => {
   );
   expect((await post("/api/matches", input, cookie)).statusCode).toBe(409);
 });
+it("protects pre-match notification approval and regulatory limit", async () => {
+  const { app, post, login, preMatch } = setup();
+  const input = {
+    date: "2026-11-04",
+    fixtureId: "11111111-1111-4111-8111-111111111111",
+    detailType: "goals",
+    approved: true,
+  };
+  expect((await app.inject("/api/pre-match?date=2026-11-04")).statusCode).toBe(401);
+  expect((await post("/api/pre-match", input)).statusCode).toBe(401);
+
+  const cookie = await login();
+  expect(
+    (await post("/api/pre-match", input, cookie, "https://evil.example")).statusCode,
+  ).toBe(403);
+  expect(
+    (await app.inject({ url: "/api/pre-match?date=invalid-date", headers: { cookie } })).statusCode,
+  ).toBe(400);
+
+  expect((await post("/api/pre-match", input, cookie)).statusCode).toBe(200);
+  expect(preMatch.toggle).toHaveBeenCalledWith(input, "admin@example.com");
+
+  preMatch.toggle.mockRejectedValueOnce(
+    new PreMatchQuotaExceededError("Regulatory limit reached"),
+  );
+  expect((await post("/api/pre-match", input, cookie)).statusCode).toBe(409);
+}, 30_000);
 it("requires administrator login and same-origin requests for API key management", async () => {
   const { app, post, login, apiClients } = setup();
   const create = { action: "create", name: "Ball Mtaani", rateLimit: 120 };

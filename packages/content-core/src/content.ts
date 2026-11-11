@@ -41,6 +41,7 @@ const labels: Partial<Record<FootballEventType, string>> = {
   match_abandoned: "ABANDONED",
   match_cancelled: "CANCELLED",
   red_card: "RED CARD",
+  yellow_card: "YELLOW CARD",
   penalty_missed: "PENALTY MISSED",
   goal_cancelled: "GOAL CANCELLED",
   score_correction: "SCORE CORRECTION",
@@ -80,9 +81,12 @@ function render(context: ContentContext, shortNames = false): string {
   const label =
     labels[context.eventType] ??
     context.eventType.replaceAll("_", " ").toUpperCase();
-  const actor = ["red_card", "penalty_missed", "goal_cancelled"].includes(
-    context.eventType,
-  )
+  const actor = [
+    "red_card",
+    "yellow_card",
+    "penalty_missed",
+    "goal_cancelled",
+  ].includes(context.eventType)
     ? [context.playerName, context.scoringTeamName].filter(Boolean).join(" — ")
     : "";
   return `${label}${minute(context)}: ${score}.${actor === "" ? "" : ` ${actor}.`}`;

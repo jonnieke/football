@@ -1,5 +1,5 @@
 export const viewScript = `
-const controlViews = ['alerts','matches','leagues','api','inboxes','users','more'];
+const controlViews = ['alerts','pre-match','matches','leagues','api','inboxes','users','more'];
 const viewLoads = new Map();
 let activeControlView;
 function viewFromHash() {
@@ -8,6 +8,7 @@ function viewFromHash() {
 }
 async function loadControlView(view) {
   if (view === 'alerts') return startLiveFeed();
+  if (view === 'pre-match') return startPreMatch();
   if (view === 'matches') return startMatches();
   if (view === 'api') return loadApiClients();
   if (view === 'users') return loadUsers();
@@ -22,6 +23,7 @@ async function loadControlView(view) {
 async function showView(view) {
   if (!controlViews.includes(view)) view = 'alerts';
   if (activeControlView === 'alerts' && view !== 'alerts') suspendLiveFeed();
+  if (activeControlView === 'pre-match' && view !== 'pre-match') suspendPreMatch();
   if (activeControlView === 'matches' && view !== 'matches') suspendMatches();
   const changed = activeControlView !== view;
   activeControlView = view;

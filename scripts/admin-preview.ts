@@ -62,6 +62,42 @@ const app = buildAdmin({
       return Promise.resolve(item);
     },
   },
+  preMatch: {
+    list: (date: string) =>
+      Promise.resolve({
+        date,
+        todayEAT: date,
+        selectedCount: 0,
+        maxAllowed: 4,
+        remainingAllowed: 4,
+        isMaxReached: false,
+        pushedTodayCount: 0,
+        items: [
+          {
+            id: "01a19eb6-25ba-7326-9ee4-760b8752cc55",
+            kickoffAt: new Date().toISOString(),
+            status: "scheduled",
+            minute: null,
+            homeScore: 0,
+            awayScore: 0,
+            lastPolledAt: null,
+            homeTeam: { name: "RB Leipzig" },
+            awayTeam: { name: "Manchester City" },
+            competition: { name: "UEFA Champions League", season: 2026 },
+            approvals: {
+              goals: false,
+              scorer: false,
+              red_card: false,
+              yellow_card: false,
+              duration: false,
+            },
+          },
+        ],
+        truncated: false,
+        checkedAt: new Date().toISOString(),
+      }),
+    toggle: () => Promise.resolve({ id: randomUUID() }),
+  },
 });
 // Local fake inbox: contains only synthetic, in-memory preview credentials.
 app.get("/preview-inbox", () => ({
