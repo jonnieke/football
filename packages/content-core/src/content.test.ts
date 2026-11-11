@@ -71,6 +71,25 @@ describe("deterministic content generation", () => {
     expect(() => generateContent(goal, 10)).toThrow(RangeError);
   });
 
+  it("renders yellow card alerts with player and team", () => {
+    const content = generateContent(
+      {
+        eventType: "yellow_card",
+        minute: 34,
+        homeTeam: "Arsenal",
+        awayTeam: "Chelsea",
+        homeScore: 1,
+        awayScore: 0,
+        playerName: "Declan Rice",
+        scoringTeamName: "Arsenal",
+        competitionSlug: "epl",
+      },
+      160,
+    );
+    expect(content.standardText).toContain("YELLOW CARD 34': Arsenal 1-0 Chelsea. Declan Rice — Arsenal.");
+    expect(content.priority).toBe("normal");
+  });
+
   it("renders halftime and fulltime markers", () => {
     expect(
       generateContent({ ...goal, eventType: "half_time" }, 160).shortText,

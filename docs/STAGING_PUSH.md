@@ -16,7 +16,7 @@ The receiver contract is the developer-supplied parameterized equivalent of:
 INSERT INTO content_schedual_allday
   (message, MenuCMD, MessagePushTime, UploadedBy)
 VALUES
-  (?, 'LIVESCORES', NOW(), 'Football Content Platform');
+  (?, 'All Day News/LiveScores', NOW(), 'Football Content Platform');
 ```
 
 The implementation passes all values as parameters. It intentionally omits the

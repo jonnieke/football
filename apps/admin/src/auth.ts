@@ -176,7 +176,12 @@ export function adminAuth(redis: AuthRedis, config: AdminConfig) {
         .map(decodeUser)
         .filter((u): u is AdminUser => Boolean(u))
         .sort((a, b) => a.email.localeCompare(b.email))
-        .map(({ passwordHash: _passwordHash, ...user }) => user);
+        .map((user) => ({
+          email: user.email,
+          role: user.role,
+          disabled: user.disabled,
+          createdAt: user.createdAt,
+        }));
     },
     async saveUser(input: { email: string; role: AdminRole; password: string }) {
       const email = input.email.trim().toLowerCase();

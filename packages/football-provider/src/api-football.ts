@@ -200,6 +200,8 @@ function mapEventType(type: string, detail: string): FootballEventType | null {
     (value.includes("red card") || value.includes("second yellow"))
   )
     return "red_card";
+  if (type.toLowerCase() === "card" && value.includes("yellow card"))
+    return "yellow_card";
   return null;
 }
 

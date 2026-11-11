@@ -4,7 +4,7 @@ import { mysqlStagingSender, stagingPushConfig } from "./sender.js";
 const message = {
   id: "delivery-1",
   text: "GOAL 67': Arsenal 2-1 Chelsea.",
-  menuCmd: "LIVESCORES",
+  menuCmd: "All Day News/LiveScores",
   uploadedBy: "Football Content Platform",
 };
 
@@ -14,7 +14,7 @@ describe("staging push MySQL sender", () => {
     await expect(mysqlStagingSender(execute)(message)).resolves.toBe("42");
     expect(execute).toHaveBeenCalledWith(
       "INSERT INTO content_schedual_allday (message, MenuCMD, MessagePushTime, UploadedBy) VALUES (?, ?, NOW(), ?)",
-      [message.text, "LIVESCORES", "Football Content Platform"],
+      [message.text, "All Day News/LiveScores", "Football Content Platform"],
     );
   });
 

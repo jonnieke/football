@@ -31,7 +31,10 @@ export function memoryAuthRedis(): AuthRedis {
     hgetall: (key) => Promise.resolve(Object.fromEntries(hashes.get(key) ?? [])),
     hset: (key, field, value) => {
       let hash = hashes.get(key);
-      if (!hash) hashes.set(key, (hash = new Map()));
+      if (!hash) {
+        hash = new Map<string, string>();
+        hashes.set(key, hash);
+      }
       const fresh = !hash.has(field);
       hash.set(field, value);
       return Promise.resolve(Number(fresh));

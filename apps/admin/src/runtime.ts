@@ -12,6 +12,8 @@ import {
   revokeApiClient,
   listMatchControls,
   changeMatchControl,
+  listPreMatchApprovals,
+  togglePreMatchApproval,
 } from "@fcp/database";
 import { createAdminRedis } from "./redis.js";
 import { adminConfig } from "./config.js";
@@ -52,6 +54,10 @@ export async function initializeAdmin() {
       matches: {
         list: (date) => listMatchControls(prisma, date),
         change: (input, actor) => changeMatchControl(prisma, input, actor),
+      },
+      preMatch: {
+        list: (date) => listPreMatchApprovals(prisma, date),
+        toggle: (input, actor) => togglePreMatchApproval(prisma, input, actor),
       },
       competitions: {
         list: (after) => listCompetitions(prisma, after),

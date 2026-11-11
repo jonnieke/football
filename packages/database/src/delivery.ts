@@ -6,6 +6,7 @@ import type { PrismaClient } from "./generated/prisma/client.ts";
 import { createCanonicalEvent, SourceEventHeldError } from "./events.js";
 import { isFreshForPublication } from "./live-publication.js";
 import { enqueueMatchEmails } from "./match-email.js";
+import { enqueueStagingPush } from "./staging-push.js";
 import { matchAllowsPublication } from "./match-controls.js";
 import {
   checkpointEvents,
@@ -191,6 +192,11 @@ export async function processContentDelivery(
           eventId,
           subject: "Live football alert",
           text: generated.shortText,
+          now,
+        });
+        await enqueueStagingPush(tx, {
+          contentId: item.id,
+          message: generated.shortText,
           now,
         });
       }

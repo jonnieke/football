@@ -14,14 +14,20 @@ import {
 import { viewScript, viewCss } from "./view-ui.js";
 import { matchesHtml, matchesScript } from "./match-ui.js";
 import { usersHtml, usersScript, usersCss } from "./users-ui.js";
+import {
+  preMatchHtml,
+  preMatchScript,
+  preMatchCss,
+} from "./pre-match-ui.js";
 export const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Control Room · Football Platform</title><link rel="stylesheet" href="/admin.css"><script src="/admin.js" defer></script></head><body>
 <header><a href="/settings" class="brand">FOOTBALL <span>CONTROL ROOM</span></a><span class="badge">ADMINISTRATION</span></header>
 <main><p class="eyebrow">PRIVATE / LIVE FOOTBALL API</p><h1>Football control room</h1><p class="intro">Choose games, watch live alerts, and connect your notification service through the API.</p><p id="notice" role="status" aria-live="polite"></p>
 <section id="login" hidden><h2>Sign in</h2><p>Use the email and password provided by your administrator.</p><form id="password-login"><label for="login-email">Email address</label><input id="login-email" type="email" autocomplete="username" required maxlength="254"><label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password" required maxlength="128"><button>Sign in</button></form><details><summary>Existing administrator? Request an email sign-in link</summary><form id="login-form"><label for="link-email">Administrator email</label><input id="link-email" type="email" autocomplete="email" required maxlength="254"><button>Send sign-in link</button></form><p class="hint">Use this for original administrator accounts until they have a password set. The link expires after 10 minutes. Only approved administrator addresses receive a link. If it does not arrive within a minute, check Junk/Spam and ask the platform owner to confirm this address is approved.</p></details></section>
 <section id="confirm" hidden><h2>Confirm your sign-in</h2><p>Continue only if you requested this administrator login in this browser.</p><button id="confirm-login">Confirm sign-in</button> <a href="/login">Request a new link</a></section>
 <div id="settings" hidden><div class="toolbar"><p>Signed in as <strong id="identity"></strong></p><button id="logout" class="secondary">Sign out</button></div>
-<nav class="product-nav" aria-label="Control room views" role="tablist"><button type="button" role="tab" id="tab-alerts" aria-controls="view-alerts" aria-selected="true">Live alerts</button><button type="button" role="tab" id="tab-matches" aria-controls="view-matches" aria-selected="false">Matches</button><button type="button" role="tab" id="tab-leagues" aria-controls="view-leagues" aria-selected="false">Leagues</button><button type="button" role="tab" id="tab-api" aria-controls="view-api" aria-selected="false">API access</button><button type="button" role="tab" id="tab-inboxes" aria-controls="view-inboxes" aria-selected="false">Admin inboxes</button><button type="button" role="tab" id="tab-users" aria-controls="view-users" aria-selected="false" hidden>Team accounts</button><button type="button" role="tab" id="tab-more" aria-controls="view-more" aria-selected="false">More</button></nav>
+<nav class="product-nav" aria-label="Control room views" role="tablist"><button type="button" role="tab" id="tab-alerts" aria-controls="view-alerts" aria-selected="true">Live alerts</button><button type="button" role="tab" id="tab-pre-match" aria-controls="view-pre-match" aria-selected="false">Pre-match approval</button><button type="button" role="tab" id="tab-matches" aria-controls="view-matches" aria-selected="false">Matches</button><button type="button" role="tab" id="tab-leagues" aria-controls="view-leagues" aria-selected="false">Leagues</button><button type="button" role="tab" id="tab-api" aria-controls="view-api" aria-selected="false">API access</button><button type="button" role="tab" id="tab-inboxes" aria-controls="view-inboxes" aria-selected="false">Admin inboxes</button><button type="button" role="tab" id="tab-users" aria-controls="view-users" aria-selected="false" hidden>Team accounts</button><button type="button" role="tab" id="tab-more" aria-controls="view-more" aria-selected="false">More</button></nav>
 <div id="view-alerts" class="view-panel" role="tabpanel" aria-labelledby="tab-alerts">${liveHtml}</div>
+<div id="view-pre-match" class="view-panel" role="tabpanel" aria-labelledby="tab-pre-match" hidden>${preMatchHtml}</div>
 <div id="view-matches" class="view-panel" role="tabpanel" aria-labelledby="tab-matches" hidden>${matchesHtml}</div>
 <div id="view-api" class="view-panel" role="tabpanel" aria-labelledby="tab-api" hidden>${apiAccessHtml}</div>
 <div id="view-leagues" class="view-panel" role="tabpanel" aria-labelledby="tab-leagues" hidden>${leagueHtml}</div>
@@ -82,6 +88,7 @@ ${leagueScript}
 ${apiAccessScript}
 ${liveScript}
 ${matchesScript}
+${preMatchScript}
 ${viewScript}
 if (location.pathname === '/auth/confirm') {
   const token = new URLSearchParams(location.hash.slice(1)).get('token'); history.replaceState(null,'','/auth/confirm'); byId('confirm').hidden = false;
@@ -91,4 +98,4 @@ if (location.pathname === '/auth/confirm') {
 else (async () => { const session = await api('/api/session'); currentRole=session.role||'viewer'; byId('identity').textContent = session.email+' · '+({viewer:'View only',editor:'Editor',admin:'Admin'}[currentRole]||currentRole); byId('settings').hidden = false; for (const name of ['api','inboxes']) byId('tab-'+name).hidden=currentRole!=='admin'; byId('tab-users').hidden=currentRole!=='admin'; if(currentRole==='viewer'){ for(const id of ['tab-api','tab-inboxes','tab-users']) byId(id).hidden=true; } await showView(viewFromHash()); })().catch(error => notice(error.message));
 `;
 export const operationsStylesheet =
-  stylesheet + dashboardCss + leagueCss + apiAccessCss + viewCss + usersCss;
+  stylesheet + dashboardCss + leagueCss + apiAccessCss + viewCss + usersCss + preMatchCss;

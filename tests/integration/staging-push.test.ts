@@ -52,7 +52,7 @@ suite("durable staging-table push delivery", () => {
     await resources?.cleanup();
   }, 30_000);
 
-  it("keeps direct database delivery disconnected from new API publications", async () => {
+  it("queues staging-table push delivery for new live publications", async () => {
     const event = await createCanonicalEvent(resources.prisma, {
       fixtureId,
       eventType: "goal",
@@ -66,7 +66,9 @@ suite("durable staging-table push delivery", () => {
       processContentDelivery(resources.prisma, { eventId: event.id }, 150),
     ]);
     const jobs = await resources.prisma.stagingPushDelivery.findMany();
-    expect(jobs).toHaveLength(0);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.message).toBe("GOAL! 67' Arsenal 2-1 Chelsea.");
+    expect(jobs[0]?.menuCmd).toBe("All Day News/LiveScores");
   });
 
   it("keeps the private delivery ledger behind RLS", async () => {

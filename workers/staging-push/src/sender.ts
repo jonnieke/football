@@ -10,6 +10,9 @@ export function stagingPushConfig(env: NodeJS.ProcessEnv) {
       STAGING_PUSH_ENABLED: z.literal("true"),
       STAGING_DATABASE_URL: z.url(),
       STAGING_DATABASE_SSL_CA_FILE: z.string().min(1).optional(),
+      STAGING_DATABASE_SSL_REJECT_UNAUTHORIZED: z
+        .enum(["true", "false"])
+        .default("true"),
       STAGING_PUSH_POLL_INTERVAL_MS: z.coerce
         .number()
         .int()
@@ -43,7 +46,8 @@ export function createStagingPool(
     connectTimeout: 5000,
     enableKeepAlive: true,
     ssl: {
-      rejectUnauthorized: true,
+      rejectUnauthorized:
+        config.STAGING_DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
       ...(config.STAGING_DATABASE_SSL_CA_FILE
         ? { ca: readFileSync(config.STAGING_DATABASE_SSL_CA_FILE, "utf8") }
         : {}),

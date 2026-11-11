@@ -13,7 +13,7 @@ function deliveryHarness(overrides: Record<string, unknown> = {}) {
     id,
     contentId: id,
     message: "GOAL 67': Arsenal 2-1 Chelsea.",
-    menuCmd: "LIVESCORES",
+    menuCmd: "All Day News/LiveScores",
     uploadedBy: "Football Content Platform",
     status: "pending",
     attempts: 0,
@@ -49,7 +49,7 @@ describe("staging push delivery ledger", () => {
         expect.objectContaining({
           contentId: id,
           message: "Kick-off: Arsenal v Chelsea",
-          menuCmd: "LIVESCORES",
+          menuCmd: "All Day News/LiveScores",
           uploadedBy: "Football Content Platform",
           expiresAt: new Date("2026-09-25T10:10:00.000Z"),
         }),
@@ -73,7 +73,7 @@ describe("staging push delivery ledger", () => {
     expect(send).toHaveBeenCalledWith({
       id,
       text: "GOAL 67': Arsenal 2-1 Chelsea.",
-      menuCmd: "LIVESCORES",
+      menuCmd: "All Day News/LiveScores",
       uploadedBy: "Football Content Platform",
     });
     expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
@@ -114,5 +114,240 @@ describe("staging push delivery ledger", () => {
       "expired",
     );
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("refuses delivery when event is not a score event (e.g. red_card)", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(0);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "red_card",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "ONLY_SCORES_ALLOWED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("refuses delivery when per-game limit of 4 notifications is reached", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).findMany = vi.fn().mockResolvedValue([
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "match_finished" } } },
+    ]);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "MAX_PER_GAME_LIMIT_REACHED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("caps in-game notifications at 3 so the 4th notification is preserved for final score", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).findMany = vi.fn().mockResolvedValue([
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "penalty_goal" } } },
+    ]);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "MAX_IN_GAME_LIMIT_REACHED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("delivers full-time final score notification even after 3 in-game score alerts", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness({
+      message: "FT: Arsenal 3-2 Chelsea.",
+    });
+    (stagingPushDelivery as Record<string, unknown>).findMany = vi.fn().mockResolvedValue([
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "penalty_goal" } } },
+    ]);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "match_finished",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn().mockResolvedValue("final-rec-99");
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("delivered");
+    expect(send).toHaveBeenCalledWith({
+      id,
+      text: "FT: Arsenal 3-2 Chelsea.",
+      menuCmd: "All Day News/LiveScores",
+      uploadedBy: "Football Content Platform",
+    });
+  });
+
+  it("refuses duplicate final score notification if already delivered", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness({
+      message: "FT: Arsenal 3-2 Chelsea.",
+    });
+    (stagingPushDelivery as Record<string, unknown>).findMany = vi.fn().mockResolvedValue([
+      { content: { event: { eventType: "goal" } } },
+      { content: { event: { eventType: "match_finished" } } },
+    ]);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "match_finished",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "FINAL_SCORE_ALREADY_DELIVERED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("refuses delivery when pre-match approval has not been granted", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).count = vi.fn().mockResolvedValue(0);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([]), // No approvals
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn();
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(stagingPushDelivery.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed",
+          lastErrorCode: "PRE_MATCH_NOT_APPROVED",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("delivers score alert when approved and under 4 notifications for the game", async () => {
+    const { prisma, stagingPushDelivery } = deliveryHarness();
+    (stagingPushDelivery as Record<string, unknown>).findMany = vi.fn().mockResolvedValue([
+      { content: { event: { eventType: "goal" } } },
+    ]);
+    const contentItem = {
+      findUnique: vi.fn().mockResolvedValue({
+        event: {
+          fixtureId: "f1111111-0000-0000-0000-000000000001",
+          eventType: "goal",
+        },
+      }),
+    };
+    const preMatchApproval = {
+      findMany: vi.fn().mockResolvedValue([{ detailType: "scores" }]),
+    };
+    const extendedPrisma = {
+      ...prisma,
+      contentItem,
+      preMatchApproval,
+    };
+    const send = vi.fn().mockResolvedValue("5001");
+    await expect(deliverNextStagingPush(extendedPrisma as never, send, now)).resolves.toBe("delivered");
+    expect(send).toHaveBeenCalled();
   });
 });

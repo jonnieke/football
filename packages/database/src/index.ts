@@ -23,3 +23,4 @@ export * from "./match-email.js";
 export * from "./match-email-sender.js";
 export * from "./staging-push.js";
 export * from "./match-controls.js";
+export * from "./pre-match.js";
