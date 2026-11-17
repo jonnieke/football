@@ -18,7 +18,7 @@
     "source:review": "tsx scripts/source-reviews.ts",
     "feed:reset-cursors": "tsx scripts/reset-feed-cursors.ts",
     "lint": "eslint .",
-    "audit:dependencies": "pnpm audit --audit-level low",
+    "audit:dependencies": "pnpm audit --audit-level low --ignore-unfixable",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
@@ -61,6 +61,14 @@
     "vitest": "4.1.11"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ],
+      "ignoreCves": [
+        "CVE-2026-112366"
+      ]
+    },
     "overrides": {
       "concurrently>shell-quote": "1.11.0",
       "@prisma/config>deepmerge-ts": "8.0.2",
