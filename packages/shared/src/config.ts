@@ -78,6 +78,12 @@ const environmentSchema = z.object({
     .min(60)
     .max(86400)
     .default(900),
+  SCHEDULE_DISCOVERY_DAYS_AHEAD: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(14)
+    .default(7),
   RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
   SHORT_CONTENT_MAX_LENGTH: z.coerce
     .number()

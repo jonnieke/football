@@ -76,7 +76,12 @@ async function poll(): Promise<void> {
       where: {
         source: "api-football",
         competition: { enabled: true },
-        kickoffAt: { lte: new Date(now.getTime() + 86_400_000) },
+        kickoffAt: {
+          lte: new Date(
+            now.getTime() +
+              config.SCHEDULE_DISCOVERY_DAYS_AHEAD * 86_400_000,
+          ),
+        },
         OR: [
           { status: { notIn: ["finished", "cancelled", "abandoned"] } },
           { kickoffAt: { gte: new Date(now.getTime() - 3 * 86_400_000) } },
@@ -93,6 +98,7 @@ async function poll(): Promise<void> {
       tracked.map((item) => item.sourceFixtureId),
       discover,
       now,
+      config.SCHEDULE_DISCOVERY_DAYS_AHEAD,
     );
     let changedFixtures = 0;
     for (const fixture of fixtures) {

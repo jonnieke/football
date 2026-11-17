@@ -16,6 +16,7 @@ export async function collectFixtures(
   trackedIds: readonly string[],
   discover: boolean,
   now = new Date(),
+  daysAhead = 7,
 ): Promise<NormalizedFixture[]> {
   if (enabled.length === 0) return [];
   const allowed = new Set(
@@ -36,7 +37,11 @@ export async function collectFixtures(
   const live = await provider.getLiveFixtures();
   live.forEach(accept);
   if (discover) {
-    for (const offset of [-1, 0, 1]) {
+    const offsets: number[] = [-1, 0];
+    for (let i = 1; i <= daysAhead; i += 1) {
+      offsets.push(i);
+    }
+    for (const offset of offsets) {
       const date = new Date(now.getTime() + offset * 86_400_000)
         .toISOString()
         .slice(0, 10);

@@ -42,11 +42,37 @@ describe("fixture discovery and reconciliation", () => {
       ["1"],
       true,
       new Date("2026-09-08T00:01:00Z"),
+      1,
     );
     expect(api.getFixturesByDate.mock.calls).toEqual([
       ["2026-09-07"],
       ["2026-09-08"],
       ["2026-09-09"],
+    ]);
+    expect(found).toHaveLength(1);
+    expect(api.getFixture).not.toHaveBeenCalled();
+  });
+  it("discovers up to 7 days ahead when daysAhead is 7", async () => {
+    const api = provider();
+    api.getFixturesByDate.mockResolvedValue([fixture("1", "scheduled")]);
+    const found = await collectFixtures(
+      api,
+      enabled,
+      ["1"],
+      true,
+      new Date("2026-09-08T00:01:00Z"),
+      7,
+    );
+    expect(api.getFixturesByDate.mock.calls).toEqual([
+      ["2026-09-07"],
+      ["2026-09-08"],
+      ["2026-09-09"],
+      ["2026-09-10"],
+      ["2026-09-11"],
+      ["2026-09-12"],
+      ["2026-09-13"],
+      ["2026-09-14"],
+      ["2026-09-15"],
     ]);
     expect(found).toHaveLength(1);
     expect(api.getFixture).not.toHaveBeenCalled();
