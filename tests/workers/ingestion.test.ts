@@ -358,7 +358,7 @@ suite(
       expect((await prisma.fixture.findFirstOrThrow()).sourceFixtureId).toBe(
         "99001",
       );
-      expect(requests.filter((path) => path.includes("date=")).length).toBe(3);
+      expect(requests.filter((path) => path.includes("date=")).length).toBe(9);
       const firstState = await prisma.fixtureState.findFirstOrThrow();
       expect(firstState.sourceEvents).toEqual(
         expect.arrayContaining([
